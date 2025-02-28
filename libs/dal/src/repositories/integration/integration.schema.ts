@@ -1,9 +1,9 @@
-import * as mongoose from 'mongoose';
-import { Schema } from 'mongoose';
-import * as mongooseDelete from 'mongoose-delete';
+import mongoose, { Schema } from 'mongoose';
 
 import { schemaOptions } from '../schema-default.options';
 import { IntegrationDBModel } from './integration.entity';
+
+const mongooseDelete = require('mongoose-delete');
 
 const integrationSchema = new Schema<IntegrationDBModel>(
   {
@@ -15,11 +15,11 @@ const integrationSchema = new Schema<IntegrationDBModel>(
     _organizationId: {
       type: Schema.Types.ObjectId,
       ref: 'Organization',
-      index: true,
     },
     providerId: Schema.Types.String,
     channel: Schema.Types.String,
     credentials: {
+      apiVersion: Schema.Types.String,
       apiKey: Schema.Types.String,
       user: Schema.Types.String,
       secretKey: Schema.Types.String,
@@ -46,6 +46,22 @@ const integrationSchema = new Schema<IntegrationDBModel>(
       redirectUrl: Schema.Types.String,
       hmac: Schema.Types.Boolean,
       ipPoolName: Schema.Types.String,
+      apiKeyRequestHeader: Schema.Types.String,
+      secretKeyRequestHeader: Schema.Types.String,
+      idPath: Schema.Types.String,
+      datePath: Schema.Types.String,
+      authenticateByToken: Schema.Types.Boolean,
+      authenticationTokenKey: Schema.Types.String,
+      instanceId: Schema.Types.String,
+      alertUid: Schema.Types.String,
+      title: Schema.Types.String,
+      imageUrl: Schema.Types.String,
+      state: Schema.Types.String,
+      externalLink: Schema.Types.String,
+      apiToken: Schema.Types.String,
+      channelId: Schema.Types.String,
+      phoneNumberIdentification: Schema.Types.String,
+      accessKey: Schema.Types.String,
     },
     active: {
       type: Schema.Types.Boolean,
@@ -61,6 +77,7 @@ const integrationSchema = new Schema<IntegrationDBModel>(
       type: Schema.Types.Boolean,
       default: false,
     },
+    removeNovuBranding: Schema.Types.Boolean,
     conditions: [
       {
         isNegated: Schema.Types.Boolean,
@@ -78,13 +95,22 @@ const integrationSchema = new Schema<IntegrationDBModel>(
         ],
       },
     ],
+    connected: Schema.Types.Boolean,
   },
   schemaOptions
 );
 
+integrationSchema.index({
+  _organizationId: 1,
+  active: 1,
+});
+
+integrationSchema.index({
+  _environmentId: 1,
+});
+
 integrationSchema.plugin(mongooseDelete, { deletedAt: true, deletedBy: true, overrideMethods: 'all' });
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
 export const Integration =
   (mongoose.models.Integration as mongoose.Model<IntegrationDBModel>) ||
   mongoose.model<IntegrationDBModel>('Integration', integrationSchema);

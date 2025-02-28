@@ -1,16 +1,14 @@
 import { Avatar, Divider, Container, LoadingOverlay, Stack, Text } from '@mantine/core';
 import styled from '@emotion/styled';
-import * as capitalize from 'lodash.capitalize';
+import capitalize from 'lodash.capitalize';
 import { useClipboard } from '@mantine/hooks';
 import { MemberRoleEnum, MemberStatusEnum } from '@novu/shared';
 
-import { DotsHorizontal, Mail, Trash } from '../../../design-system/icons';
-import { colors, Dropdown, Tag } from '../../../design-system';
-import useStyles from '../../../design-system/config/text.styles';
+import { DotsHorizontal, Mail, Trash, useTextStyles, colors, Dropdown, Tag } from '@novu/design-system';
 import { MemberRole } from './MemberRole';
 import { When } from '../../../components/utils/When';
 import { parseUrl } from '../../../utils/routeUtils';
-import { ROUTES } from '../../../constants/routes.enum';
+import { ROUTES } from '../../../constants/routes';
 
 export function MembersTable({
   members,
@@ -21,9 +19,9 @@ export function MembersTable({
   onChangeMemberRole,
   allowChangeRole = false,
 }) {
-  const { classes, theme } = useStyles();
+  const { classes, theme } = useTextStyles();
   const clipboardInviteLink = useClipboard({ timeout: 1000 });
-  const selfHosted = process.env.REACT_APP_DOCKER_HOSTED_ENV === 'true';
+  const selfHosted = process.env.REACT_APP_IS_SELF_HOSTED === 'true';
 
   function isEnableMemberActions(currentMember): boolean {
     const currentUserRoles = members?.find((memberEntity) => memberEntity._userId === currentUser?._id)?.roles || [];
@@ -39,8 +37,7 @@ export function MembersTable({
   }
 
   function onCopyInviteLinkClick(currentMemberToken: any): void {
-    const inviteLink =
-      `${window.location.origin.toString()}` + parseUrl(ROUTES.AUTH_INVITATION_TOKEN, { token: currentMemberToken });
+    const inviteLink = `${window.location.origin.toString()}${parseUrl(ROUTES.AUTH_INVITATION_TOKEN, { token: currentMemberToken })}`;
     clipboardInviteLink.copy(inviteLink);
   }
 
@@ -56,7 +53,7 @@ export function MembersTable({
 
       {members?.map((member, index: number) => {
         return (
-          <MemberRowWrapper key={member._id} data-test-id={'member-row-' + member._id}>
+          <MemberRowWrapper key={member._id} data-test-id={`member-row-${member._id}`}>
             <Avatar style={{ marginRight: 10, width: 40, height: 40 }} src={member.user?.profilePicture} radius="xl">
               {capitalize((member.user?.firstName || '')[0])} {capitalize((member.user?.lastName || '')[0])}
             </Avatar>
@@ -90,6 +87,7 @@ export function MembersTable({
                       <DotsHorizontal />
                     </div>
                   }
+                  position="left"
                   middlewares={{ flip: false, shift: false }}
                 >
                   <Dropdown.Item

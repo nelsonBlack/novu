@@ -1,9 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, PropsWithChildren } from 'react';
 import { Text, Box, createStyles, Popover } from '@mantine/core';
-import { useWatch } from 'react-hook-form';
-import { Check } from '../../../design-system/icons';
-import { Close } from '../../../design-system/icons/actions/Close';
-import { colors } from '../../../design-system';
+import { Control, useWatch } from 'react-hook-form';
+import { Check, Close, colors } from '@novu/design-system';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 
 const usePopoverStyles = createStyles(({ colorScheme }) => ({
@@ -39,11 +37,20 @@ const requirements = [
   { re: /[#?!@$%^&*()-]/, label: 'Includes special symbol #?!@$%^&*()-' },
 ];
 
-export function PasswordRequirementPopover({ control, children }) {
+interface IPasswordRequirementPopoverProps {
+  control: Control<any>;
+  passwordInputName?: string;
+}
+
+export function PasswordRequirementPopover({
+  control,
+  children,
+  passwordInputName = 'password',
+}: PropsWithChildren<IPasswordRequirementPopoverProps>) {
   const [popoverOpened, setPopoverOpened] = useState(false);
   const password = useWatch({
     control,
-    name: 'password',
+    name: passwordInputName,
   });
 
   const { classes } = usePopoverStyles();

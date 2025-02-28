@@ -1,13 +1,14 @@
 import { useMutation } from '@tanstack/react-query';
-import * as Sentry from '@sentry/react';
+import { captureException } from '@sentry/react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { Center } from '@mantine/core';
+import { Button, colors, Input, Text } from '@novu/design-system';
+import type { IResponseError } from '@novu/shared';
 
 import { api } from '../../../api/api.client';
-import { Button, colors, Input, Text } from '../../../design-system';
 import { useVercelParams } from '../../../hooks';
-import { ROUTES } from '../../../constants/routes.enum';
+import { ROUTES } from '../../../constants/routes';
 
 type Props = {
   onSent: () => void;
@@ -16,7 +17,7 @@ type Props = {
 export function PasswordResetRequestForm({ onSent }: Props) {
   const { isLoading, mutateAsync, isError, error } = useMutation<
     { success: boolean },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     {
       email: string;
     }
@@ -33,12 +34,11 @@ export function PasswordResetRequestForm({ onSent }: Props) {
     };
 
     try {
-      const response = await mutateAsync(itemData);
-
+      await mutateAsync(itemData);
       onSent();
     } catch (e: any) {
       if (e.statusCode !== 400) {
-        Sentry.captureException(e);
+        captureException(e);
       }
     }
   };
@@ -53,7 +53,7 @@ export function PasswordResetRequestForm({ onSent }: Props) {
     <>
       <form noValidate name="reset-form" onSubmit={handleSubmit(onForgotPassword)}>
         <Input
-          error={errors.email?.message}
+          error={errors.email?.message as string}
           {...register('email', {
             required: 'Please provide an email',
             pattern: { value: /^\S+@\S+\.\S+$/, message: 'Please provide a valid email' },

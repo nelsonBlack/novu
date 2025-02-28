@@ -2,11 +2,10 @@ import { IConfigCredentials } from '@novu/shared';
 import styled from '@emotion/styled';
 import { Group, useMantineColorScheme } from '@mantine/core';
 
-import { colors, shadows } from '../../../../design-system';
+import { colors, shadows, getGradient } from '@novu/design-system';
 import { CardStatusBar } from '../CardStatusBar';
 import type { IIntegratedProvider } from '../../types';
 import { LimitBar } from '../LimitBar';
-import { getGradient } from '../../../../design-system/config/helper';
 import { useIntegrationLimit } from '../../../../hooks';
 
 export function NovuIntegrationCard({
@@ -141,8 +140,8 @@ const StyledCard = styled.div<{ dark: boolean; active: boolean; clickable: boole
     return selected
       ? `
            background: ${dark ? getGradient(colors.B20) : getGradient(colors.BGLight)} padding-box, ${
-          colors.vertical
-        } border-box;
+             colors.vertical
+           } border-box;
       `
       : undefined;
   }};
@@ -153,6 +152,7 @@ const StyledCard = styled.div<{ dark: boolean; active: boolean; clickable: boole
     }
     cursor: ${({ clickable }) => (clickable ? 'pointer' : undefined)};
     ${({ dark, clickable }) =>
+      // eslint-disable-next-line no-nested-ternary
       clickable
         ? dark
           ? `

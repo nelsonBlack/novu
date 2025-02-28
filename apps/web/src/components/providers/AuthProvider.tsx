@@ -1,45 +1,74 @@
-import React, { useContext } from 'react';
-import { IOrganizationEntity, IUserEntity, IJwtPayload } from '@novu/shared';
-import { useAuthController } from '../../hooks';
+import { useContext } from 'react';
+import { IOrganizationEntity, IUserEntity } from '@novu/shared';
+import { type BrowserClerk } from '@clerk/clerk-react';
+import { IS_EE_AUTH_ENABLED } from '../../config/index';
+import {
+  CommunityAuthContext,
+  CommunityAuthProvider,
+  getToken as getCommunityAuthToken,
+} from './CommunityAuthProvider';
+import { EnterpriseAuthContext, EnterpriseAuthProvider } from '../../ee/clerk/providers/EnterpriseAuthProvider';
 
-type UserContext = {
-  token: string | null;
-  currentUser: IUserEntity | undefined;
-  currentOrganization: IOrganizationEntity | undefined;
-  organizations: IOrganizationEntity[] | undefined;
-  setToken: (token: string, refetch?: boolean) => void;
-  logout: () => void;
-  jwtPayload?: IJwtPayload;
-};
+type UserState =
+  | {
+      isUserLoaded: true;
+      currentUser: IUserEntity;
+    }
+  | {
+      isUserLoaded: false;
+      currentUser: undefined;
+    };
 
-const AuthContext = React.createContext<UserContext>({
-  token: null,
-  currentUser: undefined,
-  setToken: undefined as any,
-  logout: undefined as any,
-  currentOrganization: undefined as any,
-  organizations: undefined as any,
-  jwtPayload: undefined,
-});
+type OrganizationState =
+  | {
+      isOrganizationLoaded: true;
+      currentOrganization: IOrganizationEntity;
+    }
+  | {
+      isOrganizationLoaded: false;
+      currentOrganization: undefined;
+    };
 
-export const useAuthContext = (): UserContext => useContext(AuthContext);
+export type AuthContextValue = UserState &
+  OrganizationState & {
+    login: (newToken: string, redirectUrl?: string) => Promise<void>;
+    logout: () => void;
+    redirectToLogin: (params: { redirectURL?: string }) => void;
+    // TODO: Make redirectToSignUp agnostic to business logic and accept { queryParams: { [key: string]: string }}
+    redirectToSignUp: (params: { redirectURL?: string; origin?: string; anonymousId?: string }) => void;
+    switchOrganization: (organizationId: string) => Promise<void>;
+    reloadOrganization: () => Promise<{}>;
+  };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const { token, setToken, user, organization, logout, jwtPayload, organizations } = useAuthController();
+  if (IS_EE_AUTH_ENABLED) {
+    return <EnterpriseAuthProvider>{children}</EnterpriseAuthProvider>;
+  }
 
-  return (
-    <AuthContext.Provider
-      value={{
-        currentUser: user,
-        currentOrganization: organization,
-        organizations,
-        token,
-        logout,
-        setToken,
-        jwtPayload,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <CommunityAuthProvider>{children}</CommunityAuthProvider>;
 };
+
+export const useAuth = () => {
+  const context = IS_EE_AUTH_ENABLED ? EnterpriseAuthContext : CommunityAuthContext;
+  const value = useContext(context);
+
+  if (!value) {
+    throw new Error(`useAuth must be used within ${context.displayName}`);
+  }
+
+  return value;
+};
+
+declare global {
+  interface Window {
+    Clerk: BrowserClerk;
+  }
+}
+
+export async function getToken() {
+  if (IS_EE_AUTH_ENABLED) {
+    return (await window?.Clerk?.session?.getToken()) || '';
+  }
+
+  return getCommunityAuthToken() || '';
+}

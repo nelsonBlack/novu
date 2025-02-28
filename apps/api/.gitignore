@@ -58,9 +58,6 @@ typings/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
-
 # next.js build output
 .next
 ### JetBrains template
@@ -119,3 +116,8 @@ fabric.properties
 
 .serverless
 newrelic_agent.log
+
+backups/
+
+# Nest.js auto-generated metadata (https://docs.nestjs.com/recipes/swc#monorepo-and-cli-plugins)
+src/metadata.ts

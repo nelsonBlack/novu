@@ -1,36 +1,42 @@
 import { useEffect, useReducer, useRef } from 'react';
-import { Control, Controller, FieldValues, useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClipboard } from '@mantine/hooks';
 import { ActionIcon, Alert, Center, Image, Stack, useMantineColorScheme } from '@mantine/core';
-import { WarningOutlined } from '@ant-design/icons';
-import {
-  ChannelTypeEnum,
-  ChatProviderIdEnum,
-  CredentialsKeyEnum,
+import { ChannelTypeEnum, ChatProviderIdEnum, CredentialsKeyEnum, ProvidersIdEnum } from '@novu/shared';
+import type {
+  IResponseError,
   IConfigCredentials,
   ICreateIntegrationBodyDto,
   ICredentialsDto,
   IEnvironment,
   IOrganizationEntity,
-  ProvidersIdEnum,
 } from '@novu/shared';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
+import {
+  Button,
+  colors,
+  Input,
+  shadows,
+  Switch,
+  Text,
+  Close,
+  Check,
+  Copy,
+  IconOutlineWarning,
+} from '@novu/design-system';
 
-import { Button, colors, Input, shadows, Switch, Text } from '../../../../design-system';
 import type { IIntegratedProvider } from '../../types';
 import { createIntegration, getWebhookSupportStatus, updateIntegration } from '../../../../api/integration';
-import { Close } from '../../../../design-system/icons';
 import { IntegrationInput } from '../IntegrationInput';
 import { API_ROOT, CONTEXT_PATH } from '../../../../config';
-import { Check, Copy } from '../../../../design-system/icons';
 import { successMessage } from '../../../../utils/notifications';
 import { QueryKeys } from '../../../../api/query.keys';
 import { useSegment } from '../../../../components/providers/SegmentProvider';
 import { IntegrationsStoreModalAnalytics } from '../../constants';
 import { When } from '../../../../components/utils/When';
-import { useEnvController } from '../../../../hooks';
+import { useEnvironment } from '../../../../hooks';
 
 enum ACTION_TYPE_ENUM {
   HANDLE_SHOW_SWITCH = 'handle_show_switch',
@@ -143,13 +149,13 @@ export function ConnectIntegrationForm({
 
   const { mutateAsync: createIntegrationApi, isLoading: isLoadingCreate } = useMutation<
     { res: string },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     ICreateIntegrationBodyDto
   >(createIntegration);
 
   const { mutateAsync: updateIntegrationApi, isLoading: isLoadingUpdate } = useMutation<
     { res: string },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     {
       integrationId: string;
       data: { credentials: ICredentialsDto; active: boolean; check: boolean };
@@ -374,7 +380,7 @@ export function ConnectIntegrationForm({
           )}
           <Alert
             ref={alertRef}
-            icon={<WarningOutlined size={16} />}
+            icon={<IconOutlineWarning size={'16'} />}
             title="An error occurred!"
             color="red"
             mb={30}
@@ -502,7 +508,7 @@ export function ShareableUrl({
   provider: ProvidersIdEnum | undefined;
   hmacEnabled: boolean;
 }) {
-  const { environment } = useEnvController();
+  const { environment } = useEnvironment();
 
   const oauthUrlClipboard = useClipboard({ timeout: 1000 });
   const display = provider === ChatProviderIdEnum.Slack;

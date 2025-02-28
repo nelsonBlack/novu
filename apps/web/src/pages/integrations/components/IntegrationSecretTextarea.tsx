@@ -1,9 +1,8 @@
-import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons';
 import { Grid, UnstyledButton } from '@mantine/core';
 import { IConfigCredentials } from '@novu/shared';
 import { useState } from 'react';
+import { Textarea, IconOutlineVisibility, IconOutlineVisibilityOff } from '@novu/design-system';
 import { When } from '../../../components/utils/When';
-import { Textarea } from '../../../design-system';
 
 export const IntegrationSecretTextarea = ({
   credential,
@@ -26,7 +25,9 @@ export const IntegrationSecretTextarea = ({
             label={credential.displayName}
             required={credential.required}
             placeholder="*****************"
-            description={credential.description ?? ''}
+            description={
+              credential.description ?? 'Click on the eye icon to edit and reveal the contents of this field'
+            }
             data-test-id={credential.key}
             error={errors[credential.key]?.message}
             disabled
@@ -37,7 +38,9 @@ export const IntegrationSecretTextarea = ({
             label={credential.displayName}
             required={credential.required}
             placeholder={credential.displayName}
-            description={credential.description ?? ''}
+            description={
+              credential.description ?? 'Click on the eye icon to edit and reveal the contents of this field'
+            }
             data-test-id={credential.key}
             error={errors[credential.key]?.message}
             {...field}
@@ -57,10 +60,10 @@ export const IntegrationSecretTextarea = ({
           }}
         >
           <When truthy={hidden}>
-            <EyeOutlined size={20} />
+            <IconOutlineVisibility size={'20'} />
           </When>
           <When truthy={!hidden}>
-            <EyeInvisibleOutlined size={20} />
+            <IconOutlineVisibilityOff size={'20'} />
           </When>
         </UnstyledButton>
       </Grid.Col>

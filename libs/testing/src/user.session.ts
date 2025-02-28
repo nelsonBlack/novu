@@ -1,22 +1,29 @@
 import 'cross-fetch/polyfill';
 import { faker } from '@faker-js/faker';
-import { SuperTest, Test } from 'supertest';
-import * as request from 'supertest';
-import * as defaults from 'superagent-defaults';
-import { v4 as uuid } from 'uuid';
-import { ChannelTypeEnum, EmailBlockTypeEnum, IEmailBlock, StepTypeEnum, TriggerRecipientsPayload } from '@novu/shared';
+import request, { SuperTest, Test } from 'supertest';
+import jwt from 'jsonwebtoken';
+import superAgentDefaults from 'superagent-defaults';
 import {
-  UserEntity,
+  ApiServiceLevelEnum,
+  EmailBlockTypeEnum,
+  IApiRateLimitMaximum,
+  IEmailBlock,
+  isClerkEnabled,
+  JobTopicNameEnum,
+  StepTypeEnum,
+} from '@novu/shared';
+import {
+  ChangeEntity,
+  ChangeRepository,
+  CommunityOrganizationRepository,
   EnvironmentEntity,
-  OrganizationEntity,
+  FeedRepository,
+  LayoutRepository,
   NotificationGroupEntity,
   NotificationGroupRepository,
-  FeedRepository,
-  ChangeRepository,
-  ChangeEntity,
+  OrganizationEntity,
   SubscriberRepository,
-  LayoutRepository,
-  IntegrationRepository,
+  UserEntity,
 } from '@novu/dal';
 
 import { NotificationTemplateService } from './notification-template.service';
@@ -27,6 +34,22 @@ import { CreateTemplatePayload } from './create-notification-template.interface'
 import { IntegrationService } from './integration.service';
 import { UserService } from './user.service';
 import { JobsService } from './jobs.service';
+import { EEUserService } from './ee/ee.user.service';
+import { EEOrganizationService } from './ee/ee.organization.service';
+import { TEST_USER_PASSWORD } from './constants';
+import { ClerkJwtPayload } from './ee/types';
+import { CLERK_ORGANIZATION_1, CLERK_USER_1 } from './ee/clerk-mock-data';
+
+type UserSessionOptions = {
+  noOrganization?: boolean;
+  noEnvironment?: boolean;
+  noWidgetSession?: boolean;
+  showOnBoardingTour?: boolean;
+  ee?: {
+    userId: string;
+    orgId: string;
+  };
+};
 
 const EMAIL_BLOCK: IEmailBlock[] = [
   {
@@ -39,7 +62,6 @@ export class UserSession {
   private notificationGroupRepository = new NotificationGroupRepository();
   private feedRepository = new FeedRepository();
   private layoutRepository = new LayoutRepository();
-  private integrationRepository = new IntegrationRepository();
   private changeRepository: ChangeRepository = new ChangeRepository();
   private environmentService: EnvironmentService = new EnvironmentService();
   private integrationService: IntegrationService = new IntegrationService();
@@ -69,17 +91,19 @@ export class UserSession {
 
   apiKey: string;
 
-  constructor(public serverUrl = `http://localhost:${process.env.PORT}`) {
+  constructor(public serverUrl = `http://127.0.0.1:${process.env.PORT}`) {
     this.jobsService = new JobsService();
   }
 
-  async initialize(
-    options: {
-      noOrganization?: boolean;
-      noEnvironment?: boolean;
-      showOnBoardingTour?: boolean;
-    } = {}
-  ) {
+  async initialize(options: UserSessionOptions = {}) {
+    if (isClerkEnabled()) {
+      await this.initializeEE(options);
+    } else {
+      await this.initializeCommunity(options);
+    }
+  }
+
+  private async initializeCommunity(options: UserSessionOptions = {}) {
     const card = {
       firstName: faker.name.firstName(),
       lastName: faker.name.lastName(),
@@ -92,7 +116,7 @@ export class UserSession {
       email: `${card.firstName}_${card.lastName}_${faker.datatype.uuid()}@gmail.com`.toLowerCase(),
       profilePicture: `https://randomuser.me/api/portraits/men/${Math.floor(Math.random() * 60) + 1}.jpg`,
       tokens: [],
-      password: '123Qwe!@#',
+      password: TEST_USER_PASSWORD,
       showOnBoarding: true,
       showOnBoardingTour: options.showOnBoardingTour ? 0 : 2,
     };
@@ -100,16 +124,14 @@ export class UserSession {
     this.user = await userService.createUser(userEntity);
 
     if (!options.noOrganization) {
-      await this.addOrganization();
+      await this.addOrganizationCommunity();
     }
-
-    await this.fetchJWT();
 
     if (!options.noOrganization && !options?.noEnvironment) {
       await this.createEnvironmentsAndFeeds();
     }
 
-    await this.fetchJWT();
+    await this.fetchJwtCommunity();
 
     if (!options.noOrganization) {
       if (!options?.noEnvironment) {
@@ -117,7 +139,47 @@ export class UserSession {
       }
     }
 
-    if (!options.noOrganization && !options.noEnvironment) {
+    if (!options.noOrganization && !options.noEnvironment && !options.noWidgetSession) {
+      const { token, profile } = await this.initializeWidgetSession();
+      this.subscriberToken = token;
+      this.subscriberProfile = profile;
+    }
+  }
+
+  private async initializeEE(options: UserSessionOptions) {
+    const userService = new EEUserService();
+
+    const externalUserId = options.ee?.userId || CLERK_USER_1.id;
+    const externalOrgId = options.ee?.orgId || CLERK_ORGANIZATION_1.id;
+
+    const user = await userService.getUser(externalUserId);
+
+    if (!user._id) {
+      // not linked in clerk
+      this.user = await userService.createUser(externalUserId);
+    } else {
+      this.user = user;
+    }
+
+    if (!options.noOrganization) {
+      await this.addOrganizationEE(externalOrgId);
+    }
+
+    await this.fetchJwtEE();
+
+    if (!options.noOrganization && !options?.noEnvironment) {
+      await this.createEnvironmentsAndFeeds();
+    }
+
+    await this.fetchJwtEE();
+
+    if (!options.noOrganization) {
+      if (!options?.noEnvironment) {
+        await this.updateOrganizationDetails();
+      }
+    }
+
+    if (!options.noOrganization && !options.noEnvironment && !options.noWidgetSession) {
       const { token, profile } = await this.initializeWidgetSession();
       this.subscriberToken = token;
       this.subscriberProfile = profile;
@@ -152,14 +214,59 @@ export class UserSession {
   }
 
   async fetchJWT() {
+    if (isClerkEnabled()) {
+      await this.fetchJwtEE();
+    } else {
+      await this.fetchJwtCommunity();
+    }
+  }
+
+  async addOrganization() {
+    if (!isClerkEnabled()) {
+      return await this.addOrganizationCommunity();
+    } else {
+      throw new Error('Not implemented');
+    }
+  }
+
+  private async fetchJwtCommunity() {
     const response = await request(this.requestEndpoint).get(
-      `/v1/auth/test/token/${this.user._id}?environmentId=${
-        this.environment ? this.environment._id : ''
-      }&organizationId=${this.organization ? this.organization._id : ''}`
+      `/v1/auth/test/token/${this.user._id}?organizationId=${this.organization ? this.organization._id : ''}`
     );
 
     this.token = `Bearer ${response.body.data}`;
-    this.testAgent = defaults(request(this.requestEndpoint)).set('Authorization', this.token);
+    this.testAgent = superAgentDefaults(request(this.requestEndpoint))
+      .set('Authorization', this.token)
+      .set('Novu-Environment-Id', this.environment ? this.environment._id : '');
+  }
+
+  private async fetchJwtEE() {
+    await this.updateEETokenClaims({
+      externalId: this.user ? this.user._id : '',
+      externalOrgId: this.organization ? this.organization._id : '',
+      org_role: 'org:admin',
+      _id: this.user ? this.user.externalId : 'does_not_matter',
+      org_id: this.organization ? this.organization.externalId : 'does_not_matter',
+    });
+  }
+
+  async updateEETokenClaims(claims: Partial<ClerkJwtPayload>) {
+    const decoded = await jwt.decode(process.env.CLERK_LONG_LIVED_TOKEN as string);
+
+    const newToken = {
+      ...decoded,
+      ...claims,
+    };
+
+    const encoded = jwt.sign(newToken, process.env.CLERK_MOCK_JWT_PRIVATE_KEY, {
+      algorithm: 'RS256',
+    });
+
+    this.token = `Bearer ${encoded}`;
+
+    this.testAgent = superAgentDefaults(request(this.requestEndpoint))
+      .set('Authorization', this.token)
+      .set('Novu-Environment-Id', this.environment ? this.environment._id : '');
   }
 
   async createEnvironmentsAndFeeds(): Promise<void> {
@@ -213,7 +320,7 @@ export class UserSession {
       .put('/v1/organizations/branding')
       .send({
         color: '#2a9d8f',
-        logo: 'https://web.novu.co/static/images/logo-light.png',
+        logo: 'https://dashboard.novu.co/static/images/logo-light.png',
         fontColor: '#214e49',
         contentBackground: '#c2cbd2',
         fontFamily: 'Montserrat',
@@ -250,7 +357,7 @@ export class UserSession {
     });
   }
 
-  async addOrganization() {
+  private async addOrganizationCommunity() {
     const organizationService = new OrganizationService();
 
     this.organization = await organizationService.createOrganization();
@@ -259,6 +366,36 @@ export class UserSession {
     return this.organization;
   }
 
+  private async addOrganizationEE(orgId: string) {
+    const organizationService = new EEOrganizationService();
+
+    try {
+      // is not linked
+      this.organization = await organizationService.createOrganization(orgId);
+    } catch (e) {
+      // is already linked
+      this.organization = (await organizationService.getOrganization(orgId)) as OrganizationEntity;
+    }
+
+    return this.organization;
+  }
+
+  async switchToProdEnvironment() {
+    const prodEnvironment = await this.environmentService.getProductionEnvironment(this.organization._id);
+    if (prodEnvironment) {
+      await this.switchEnvironment(prodEnvironment._id);
+    }
+  }
+
+  // TODO: Replace with a getDevId
+  async switchToDevEnvironment() {
+    const devEnvironment = await this.environmentService.getDevelopmentEnvironment(this.organization._id);
+    if (devEnvironment) {
+      await this.switchEnvironment(devEnvironment._id);
+    }
+  }
+
+  // TODO: create EE version
   async switchEnvironment(environmentId: string) {
     const environment = await this.environmentService.getEnvironment(environmentId);
 
@@ -266,12 +403,17 @@ export class UserSession {
       this.environment = environment;
       await this.testAgent.post(`/v1/auth/environments/${environmentId}/switch`);
 
-      await this.fetchJWT();
+      if (isClerkEnabled()) {
+        await this.fetchJwtEE();
+      } else {
+        await this.fetchJwtCommunity();
+      }
     }
   }
 
   async createFeed(name?: string) {
-    name = name ? name : 'Activities';
+    // eslint-disable-next-line no-param-reassign
+    name = name || 'Activities';
     const feed = await this.feedRepository.create({
       name,
       identifier: name,
@@ -282,30 +424,26 @@ export class UserSession {
     return feed;
   }
 
-  async triggerEvent(triggerName: string, to: TriggerRecipientsPayload, payload = {}) {
-    return await this.testAgent.post('/v1/events/trigger').send({
-      name: triggerName,
-      to: to,
-      payload,
-    });
-  }
-
-  public async awaitParsingEvents() {
-    await this.jobsService.awaitParsingEvents();
-  }
-
-  public async awaitRunningJobs(
+  public async waitForJobCompletion(
     templateId?: string | string[],
     delay?: boolean,
     unfinishedJobs = 0,
     organizationId = this.organization._id
   ) {
-    await this.jobsService.awaitRunningJobs({
+    return this.jobsService.waitForJobCompletion({
       templateId,
       organizationId,
       delay,
       unfinishedJobs,
     });
+  }
+
+  public async runAllDelayedJobsImmediately() {
+    return this.jobsService.runAllDelayedJobsImmediately();
+  }
+
+  public async queueGet(jobTopicName: JobTopicNameEnum, getter: 'getDelayed') {
+    return await this.jobsService.queueGet(jobTopicName, getter);
   }
 
   public async applyChanges(where: Partial<ChangeEntity> = {}) {
@@ -325,5 +463,15 @@ export class UserSession {
     for (const change of changes) {
       await this.testAgent.post(`/v1/changes/${change._id}/apply`);
     }
+  }
+
+  public async updateOrganizationServiceLevel(serviceLevel: ApiServiceLevelEnum) {
+    const communityOrganizationRepository = new CommunityOrganizationRepository();
+
+    await communityOrganizationRepository.update({ _id: this.organization._id }, { apiServiceLevel: serviceLevel });
+  }
+
+  public async updateEnvironmentApiRateLimits(apiRateLimits: Partial<IApiRateLimitMaximum>) {
+    await this.environmentService.updateApiRateLimits(this.environment._id, apiRateLimits);
   }
 }

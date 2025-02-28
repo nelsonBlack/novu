@@ -2,7 +2,7 @@ import { Group } from '@mantine/core';
 import styled from '@emotion/styled';
 import { format, parseISO } from 'date-fns';
 
-import { colors, Container, Text, Tooltip } from '../../design-system';
+import { colors, Container, Text, Tooltip } from '@novu/design-system';
 import { mappedWebhookStatuses } from './helpers';
 
 const WebhookFeedbackWrapper = styled(Container)`
@@ -49,9 +49,9 @@ export const ExecutionDetailsWebhookFeedback = ({ executionDetails }) => {
 
       if (webhookStatus) {
         Object.keys(mappedWebhookStatuses).forEach((key) => {
-          const status = mappedWebhookStatuses[key].status;
-          const icon = mappedWebhookStatuses[key].icon;
-          const label = mappedWebhookStatuses[key].label;
+          const { status } = mappedWebhookStatuses[key];
+          const { icon } = mappedWebhookStatuses[key];
+          const { label } = mappedWebhookStatuses[key];
           if (status.includes(webhookStatus.toLowerCase())) {
             icons.push(<WebhookFeedback icon={icon} text={label} timeStamp={detail?.updatedAt} />);
           }

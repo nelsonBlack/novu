@@ -1,5 +1,5 @@
-import { Novu } from '../novu';
 import axios from 'axios';
+import { Novu } from '../novu';
 
 const mockConfig = {
   apiKey: '1234',
@@ -71,6 +71,24 @@ describe('test use of novus node package - Events', () => {
             test: 'test-data',
           },
         },
+        email: {
+          customData: {
+            templateId: 'template-id-123',
+            nestedObject: {
+              firstChild: {
+                secondChild: {
+                  name: 'Second Child',
+                },
+              },
+            },
+            fourthChild: {
+              name: 'Fourth Child',
+            },
+          },
+          headers: {
+            'X-Novu-Custom-Header': 'test-data',
+          },
+        },
       },
     });
 
@@ -83,6 +101,24 @@ describe('test use of novus node package - Events', () => {
           type: 'notification',
           data: {
             test: 'test-data',
+          },
+        },
+        email: {
+          customData: {
+            templateId: 'template-id-123',
+            nestedObject: {
+              firstChild: {
+                secondChild: {
+                  name: 'Second Child',
+                },
+              },
+            },
+            fourthChild: {
+              name: 'Fourth Child',
+            },
+          },
+          headers: {
+            'X-Novu-Custom-Header': 'test-data',
           },
         },
       },
@@ -169,7 +205,7 @@ describe('test use of novus node package - Events', () => {
 
     expect(mockedAxios.delete).toHaveBeenCalled();
     expect(mockedAxios.delete).toHaveBeenCalledWith(
-      '/events/trigger/transactionId'
+      '/events/trigger/transactionId',
     );
   });
 

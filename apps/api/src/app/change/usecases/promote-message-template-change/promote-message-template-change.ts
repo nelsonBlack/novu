@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PromoteTypeChangeCommand } from '../promote-type-change.command';
 import { MessageTemplateEntity, LayoutRepository, MessageTemplateRepository, FeedRepository } from '@novu/dal';
+import { PromoteTypeChangeCommand } from '../promote-type-change.command';
 
 @Injectable()
 export class PromoteMessageTemplateChange {
@@ -46,6 +46,8 @@ export class PromoteMessageTemplateChange {
         content: newItem.content,
         contentType: newItem.contentType,
         title: newItem.title,
+        preheader: newItem.preheader,
+        senderName: newItem.senderName,
         cta: newItem.cta,
         active: newItem.active,
         actor: newItem.actor,
@@ -87,6 +89,8 @@ export class PromoteMessageTemplateChange {
         contentType: newItem.contentType,
         title: newItem.title,
         cta: newItem.cta,
+        preheader: newItem.preheader,
+        senderName: newItem.senderName,
         active: newItem.active,
         actor: newItem.actor,
         variables: newItem.variables,

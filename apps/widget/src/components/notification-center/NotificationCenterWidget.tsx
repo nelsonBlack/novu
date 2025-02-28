@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
-import * as WebFont from 'webfontloader';
+import WebFont from 'webfontloader';
 import { css, Global } from '@emotion/react';
 import {
   NotificationCenter,
@@ -39,6 +39,7 @@ export function NotificationCenterWidget(props: INotificationCenterWidgetProps) 
   const [colorScheme, setColorScheme] = useState<ColorScheme>('light');
   const [doLogout, setDoLogout] = useState(false);
   const [preferenceFilter, setPreferenceFilter] = useState<(userPreference: IUserPreferenceSettings) => boolean>();
+  const [showUserPreferences, setShowUserPreferences] = useState<boolean>(true);
 
   useEffect(() => {
     if (fontFamily !== DEFAULT_FONT_FAMILY) {
@@ -94,6 +95,10 @@ export function NotificationCenterWidget(props: INotificationCenterWidgetProps) 
           setPreferenceFilter(() => data.value.preferenceFilter);
         }
 
+        if (data.value.showUserPreferences) {
+          setShowUserPreferences(data.value.showUserPreferences);
+        }
+
         setFrameInitialized(true);
       }
 
@@ -102,7 +107,7 @@ export function NotificationCenterWidget(props: INotificationCenterWidgetProps) 
       }
     };
 
-    if (process.env.NODE_ENV === 'test') {
+    if (process.env.NODE_ENV === 'test' || (window as any).Cypress) {
       // eslint-disable-next-line
       (window as any).initHandler = handler;
     }
@@ -145,6 +150,7 @@ export function NotificationCenterWidget(props: INotificationCenterWidgetProps) 
               preferenceFilter={preferenceFilter}
               theme={theme}
               tabs={tabs}
+              showUserPreferences={showUserPreferences}
             />
           </NovuNotificationCenterWrapper>
         </NovuProvider>

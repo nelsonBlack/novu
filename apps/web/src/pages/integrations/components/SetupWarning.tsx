@@ -1,8 +1,8 @@
 import styled from '@emotion/styled';
 import { Group } from '@mantine/core';
 
+import { DisconnectGradient } from '@novu/design-system';
 import { When } from '../../../components/utils/When';
-import { DisconnectGradient } from '../../../design-system/icons';
 
 const WarningMessage = styled(Group)`
   display: flex;

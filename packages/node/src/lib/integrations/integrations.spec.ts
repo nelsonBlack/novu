@@ -1,6 +1,6 @@
-import { Novu } from '../novu';
 import axios from 'axios';
-import { ChannelTypeEnum } from '@novu/shared';
+import { ChannelTypeEnum, FieldLogicalOperatorEnum } from '@novu/shared';
+import { Novu } from '../novu';
 
 const mockConfig = {
   apiKey: '1234',
@@ -38,7 +38,12 @@ describe('test use of novus node package - Integrations class', () => {
       channel: ChannelTypeEnum.EMAIL,
       check: true,
       conditions: [
-        { isNegated: false, type: 'GROUP', value: 'AND', children: [] },
+        {
+          isNegated: false,
+          type: 'GROUP',
+          value: FieldLogicalOperatorEnum.AND,
+          children: [],
+        },
       ],
     });
 
@@ -53,7 +58,12 @@ describe('test use of novus node package - Integrations class', () => {
       channel: ChannelTypeEnum.EMAIL,
       check: true,
       conditions: [
-        { isNegated: false, type: 'GROUP', value: 'AND', children: [] },
+        {
+          isNegated: false,
+          type: 'GROUP',
+          value: FieldLogicalOperatorEnum.AND,
+          children: [],
+        },
       ],
     });
   });
@@ -74,7 +84,7 @@ describe('test use of novus node package - Integrations class', () => {
 
     expect(mockedAxios.get).toHaveBeenCalled();
     expect(mockedAxios.get).toHaveBeenCalledWith(
-      `integrations/webhook/provider/emailjs/status`
+      `integrations/webhook/provider/emailjs/status`,
     );
   });
 
@@ -89,7 +99,12 @@ describe('test use of novus node package - Integrations class', () => {
         secretKey: 'newApiSecret',
       },
       conditions: [
-        { isNegated: false, type: 'GROUP', value: 'AND', children: [] },
+        {
+          isNegated: false,
+          type: 'GROUP',
+          value: FieldLogicalOperatorEnum.AND,
+          children: [],
+        },
       ],
     });
 
@@ -104,9 +119,14 @@ describe('test use of novus node package - Integrations class', () => {
           secretKey: 'newApiSecret',
         },
         conditions: [
-          { isNegated: false, type: 'GROUP', value: 'AND', children: [] },
+          {
+            isNegated: false,
+            type: 'GROUP',
+            value: FieldLogicalOperatorEnum.AND,
+            children: [],
+          },
         ],
-      }
+      },
     );
   });
 
@@ -117,7 +137,7 @@ describe('test use of novus node package - Integrations class', () => {
 
     expect(mockedAxios.delete).toHaveBeenCalled();
     expect(mockedAxios.delete).toHaveBeenCalledWith(
-      '/integrations/INTEGRATION_ID'
+      '/integrations/INTEGRATION_ID',
     );
   });
 
@@ -129,7 +149,7 @@ describe('test use of novus node package - Integrations class', () => {
     expect(mockedAxios.post).toHaveBeenCalled();
     expect(mockedAxios.post).toHaveBeenCalledWith(
       '/integrations/INTEGRATION_ID/set-primary',
-      {}
+      {},
     );
   });
 

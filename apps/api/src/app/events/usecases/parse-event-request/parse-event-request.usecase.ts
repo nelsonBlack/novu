@@ -1,31 +1,50 @@
-import { Injectable, UnprocessableEntityException, Logger } from '@nestjs/common';
-import * as Sentry from '@sentry/node';
-import * as hat from 'hat';
+import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { addBreadcrumb } from '@sentry/node';
+import { randomBytes } from 'crypto';
 import { merge } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
+
 import {
-  buildNotificationTemplateIdentifierKey,
-  CachedEntity,
+  ExecuteBridgeRequest,
+  ExecuteBridgeRequestCommand,
+  ExecuteBridgeRequestDto,
   Instrument,
   InstrumentUsecase,
+  IWorkflowDataDto,
+  PinoLogger,
   StorageHelperService,
   WorkflowQueueService,
 } from '@novu/application-generic';
-import { NotificationTemplateRepository, NotificationTemplateEntity, TenantRepository } from '@novu/dal';
 import {
-  ISubscribersDefine,
-  ITenantDefine,
+  EnvironmentEntity,
+  EnvironmentRepository,
+  NotificationTemplateEntity,
+  NotificationTemplateRepository,
+  TenantEntity,
+  TenantRepository,
+  WorkflowOverrideEntity,
+  WorkflowOverrideRepository,
+} from '@novu/dal';
+import { DiscoverWorkflowOutput, GetActionEnum } from '@novu/framework/internal';
+import {
   ReservedVariablesMap,
+  SUBSCRIBER_ID_REGEX,
   TriggerContextTypeEnum,
   TriggerEventStatusEnum,
-  TriggerTenantContext,
+  TriggerRecipient,
+  TriggerRecipients,
+  TriggerRecipientsPayload,
+  WorkflowOriginEnum,
 } from '@novu/shared';
-
-import { ParseEventRequestCommand } from './parse-event-request.command';
 
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { VerifyPayload, VerifyPayloadCommand } from '../verify-payload';
-import { MapTriggerRecipients, MapTriggerRecipientsCommand } from '../map-trigger-recipients';
+import {
+  ParseEventRequestBroadcastCommand,
+  ParseEventRequestCommand,
+  ParseEventRequestMulticastCommand,
+} from './parse-event-request.command';
 
 const LOG_CONTEXT = 'ParseEventRequest';
 
@@ -33,31 +52,36 @@ const LOG_CONTEXT = 'ParseEventRequest';
 export class ParseEventRequest {
   constructor(
     private notificationTemplateRepository: NotificationTemplateRepository,
+    private environmentRepository: EnvironmentRepository,
     private verifyPayload: VerifyPayload,
     private storageHelperService: StorageHelperService,
     private workflowQueueService: WorkflowQueueService,
-    private mapTriggerRecipients: MapTriggerRecipients,
-    private tenantRepository: TenantRepository
+    private tenantRepository: TenantRepository,
+    private workflowOverrideRepository: WorkflowOverrideRepository,
+    private executeBridgeRequest: ExecuteBridgeRequest,
+    private logger: PinoLogger,
+    protected moduleRef: ModuleRef
   ) {}
 
   @InstrumentUsecase()
-  async execute(command: ParseEventRequestCommand) {
+  public async execute(command: ParseEventRequestCommand) {
+    this.logger.info(command, 'TriggerEventUseCase - START');
     const transactionId = command.transactionId || uuidv4();
 
-    const mappedActor = command.actor ? this.mapTriggerRecipients.mapSubscriber(command.actor) : undefined;
-
-    const mappedRecipients = await this.mapTriggerRecipients.execute(
-      MapTriggerRecipientsCommand.create({
-        environmentId: command.environmentId,
-        organizationId: command.organizationId,
-        recipients: command.to,
-        transactionId,
-        userId: command.userId,
-        actor: mappedActor,
-      })
+    const { environment, statelessWorkflowAllowed } = await this.isStatelessWorkflowAllowed(
+      command.environmentId,
+      command.bridgeUrl
     );
 
-    await this.validateSubscriberIdProperty(mappedRecipients);
+    if (environment && statelessWorkflowAllowed) {
+      const discoveredWorkflow = await this.queryDiscoverWorkflow(command);
+
+      if (!discoveredWorkflow) {
+        throw new UnprocessableEntityException('workflow_not_found');
+      }
+
+      return await this.dispatchEventToWorkflowQueue(command, transactionId, discoveredWorkflow);
+    }
 
     const template = await this.getNotificationTemplateByTriggerIdentifier({
       environmentId: command.environmentId,
@@ -71,7 +95,39 @@ export class ParseEventRequest {
     const reservedVariablesTypes = this.getReservedVariablesTypes(template);
     this.validateTriggerContext(command, reservedVariablesTypes);
 
-    if (!template.active) {
+    let tenant: TenantEntity | null = null;
+    if (command.tenant) {
+      tenant = await this.tenantRepository.findOne({
+        _environmentId: command.environmentId,
+        identifier: typeof command.tenant === 'string' ? command.tenant : command.tenant.identifier,
+      });
+
+      if (!tenant) {
+        return {
+          acknowledged: true,
+          status: TriggerEventStatusEnum.TENANT_MISSING,
+        };
+      }
+    }
+
+    let workflowOverride: WorkflowOverrideEntity | null = null;
+    if (tenant) {
+      workflowOverride = await this.workflowOverrideRepository.findOne({
+        _environmentId: command.environmentId,
+        _organizationId: command.organizationId,
+        _workflowId: template._id,
+        _tenantId: tenant._id,
+      });
+    }
+
+    const inactiveWorkflow = !workflowOverride && !template.active;
+    const inactiveWorkflowOverride = workflowOverride && !workflowOverride.active;
+
+    if (inactiveWorkflowOverride || inactiveWorkflow) {
+      const message = workflowOverride ? 'Workflow is not active by workflow override' : 'Workflow is not active';
+      Logger.log(message, LOG_CONTEXT);
+      this.logger.info(command, `${LOG_CONTEXT}:${message}`);
+
       return {
         acknowledged: true,
         status: TriggerEventStatusEnum.NOT_ACTIVE,
@@ -92,18 +148,7 @@ export class ParseEventRequest {
       };
     }
 
-    if (command.tenant) {
-      try {
-        await this.validateTenant(typeof command.tenant === 'string' ? command.tenant : command.tenant.identifier);
-      } catch (e) {
-        return {
-          acknowledged: true,
-          status: TriggerEventStatusEnum.TENANT_MISSING,
-        };
-      }
-    }
-
-    Sentry.addBreadcrumb({
+    addBreadcrumb({
       message: 'Sending trigger',
       data: {
         triggerIdentifier: command.identifier,
@@ -114,6 +159,7 @@ export class ParseEventRequest {
     if (command.payload && Array.isArray(command.payload.attachments)) {
       this.modifyAttachments(command);
       await this.storageHelperService.uploadAttachments(command.payload.attachments);
+      // eslint-disable-next-line no-param-reassign
       command.payload.attachments = command.payload.attachments.map(({ file, ...attachment }) => attachment);
     }
 
@@ -123,16 +169,52 @@ export class ParseEventRequest {
         template,
       })
     );
-
+    // eslint-disable-next-line no-param-reassign
     command.payload = merge({}, defaultPayload, command.payload);
 
-    const jobData = {
+    const result = await this.dispatchEventToWorkflowQueue(command, transactionId);
+
+    return result;
+  }
+
+  private async queryDiscoverWorkflow(command: ParseEventRequestCommand): Promise<DiscoverWorkflowOutput | null> {
+    if (!command.bridgeUrl) {
+      return null;
+    }
+
+    const discover = (await this.executeBridgeRequest.execute(
+      ExecuteBridgeRequestCommand.create({
+        statelessBridgeUrl: command.bridgeUrl,
+        environmentId: command.environmentId,
+        action: GetActionEnum.DISCOVER,
+        workflowOrigin: WorkflowOriginEnum.EXTERNAL,
+      })
+    )) as ExecuteBridgeRequestDto<GetActionEnum.DISCOVER>;
+
+    return discover?.workflows?.find((findWorkflow) => findWorkflow.workflowId === command.identifier) || null;
+  }
+
+  private async dispatchEventToWorkflowQueue(
+    command: ParseEventRequestMulticastCommand | ParseEventRequestBroadcastCommand,
+    transactionId,
+    discoveredWorkflow?: DiscoverWorkflowOutput | null
+  ) {
+    const commandArgs = {
       ...command,
-      to: mappedRecipients,
-      actor: mappedActor,
-      transactionId,
     };
-    await this.workflowQueueService.add(transactionId, jobData, command.organizationId);
+
+    const jobData: IWorkflowDataDto = {
+      ...commandArgs,
+      actor: command.actor,
+      transactionId,
+      bridgeWorkflow: discoveredWorkflow ?? undefined,
+    };
+
+    await this.workflowQueueService.add({ name: transactionId, data: jobData, groupId: command.organizationId });
+    this.logger.info(
+      { ...command, transactionId, discoveredWorkflowId: discoveredWorkflow?.workflowId },
+      'TriggerEventUseCase - Event dispatched to [Workflow] Queue'
+    );
 
     return {
       acknowledged: true,
@@ -141,14 +223,24 @@ export class ParseEventRequest {
     };
   }
 
+  private async isStatelessWorkflowAllowed(
+    environmentId: string,
+    bridgeUrl: string | undefined
+  ): Promise<{ environment: EnvironmentEntity | null; statelessWorkflowAllowed: boolean }> {
+    if (!bridgeUrl) {
+      return { environment: null, statelessWorkflowAllowed: false };
+    }
+
+    const environment = await this.environmentRepository.findOne({ _id: environmentId });
+
+    if (!environment) {
+      throw new UnprocessableEntityException('Environment not found');
+    }
+
+    return { environment, statelessWorkflowAllowed: true };
+  }
+
   @Instrument()
-  @CachedEntity({
-    builder: (command: { triggerIdentifier: string; environmentId: string }) =>
-      buildNotificationTemplateIdentifierKey({
-        _environmentId: command.environmentId,
-        templateIdentifier: command.triggerIdentifier,
-      }),
-  })
   private async getNotificationTemplateByTriggerIdentifier(command: {
     triggerIdentifier: string;
     environmentId: string;
@@ -157,30 +249,6 @@ export class ParseEventRequest {
       command.environmentId,
       command.triggerIdentifier
     );
-  }
-
-  private async validateTenant(identifier: string) {
-    const found = await this.tenantRepository.findOne({
-      identifier,
-    });
-    if (!found) {
-      throw new ApiException(`Tenant with identifier ${identifier} cound not be found`);
-    }
-  }
-
-  @Instrument()
-  private async validateSubscriberIdProperty(to: ISubscribersDefine[]): Promise<boolean> {
-    for (const subscriber of to) {
-      const subscriberIdExists = typeof subscriber === 'string' ? subscriber : subscriber.subscriberId;
-
-      if (!subscriberIdExists) {
-        throw new ApiException(
-          'subscriberId under property to is not configured, please make sure all subscribers contains subscriberId property'
-        );
-      }
-    }
-
-    return true;
   }
 
   @Instrument()
@@ -211,26 +279,63 @@ export class ParseEventRequest {
     }
   }
 
-  private modifyAttachments(command: ParseEventRequestCommand) {
-    command.payload.attachments = command.payload.attachments.map((attachment) => ({
-      ...attachment,
-      name: attachment.name,
-      file: Buffer.from(attachment.file, 'base64'),
-      storagePath: `${command.organizationId}/${command.environmentId}/${hat()}/${attachment.name}`,
-    }));
+  private modifyAttachments(command: ParseEventRequestCommand): void {
+    // eslint-disable-next-line no-param-reassign
+    command.payload.attachments = command.payload.attachments.map((attachment) => {
+      const randomId = randomBytes(16).toString('hex');
+
+      return {
+        ...attachment,
+        name: attachment.name,
+        file: Buffer.from(attachment.file, 'base64'),
+        storagePath: `${command.organizationId}/${command.environmentId}/${randomId}/${attachment.name}`,
+      };
+    });
   }
 
-  public mapTenant(tenant: TriggerTenantContext): ITenantDefine {
-    if (typeof tenant === 'string') {
-      return { identifier: tenant };
-    }
-
-    return tenant;
-  }
-
-  public getReservedVariablesTypes(template: NotificationTemplateEntity): TriggerContextTypeEnum[] {
-    const reservedVariables = template.triggers[0].reservedVariables;
+  private getReservedVariablesTypes(template: NotificationTemplateEntity): TriggerContextTypeEnum[] {
+    const { reservedVariables } = template.triggers[0];
 
     return reservedVariables?.map((reservedVariable) => reservedVariable.type) || [];
+  }
+
+  private isValidId(subscriberId: string) {
+    if (subscriberId.trim().match(SUBSCRIBER_ID_REGEX)) {
+      return subscriberId.trim();
+    }
+  }
+
+  private removeInvalidRecipients(payload: TriggerRecipientsPayload): TriggerRecipientsPayload | null {
+    if (!payload) return null;
+
+    if (!Array.isArray(payload)) {
+      return this.filterValidRecipient(payload) as TriggerRecipientsPayload;
+    }
+
+    const filteredRecipients: TriggerRecipients = payload
+      .map((subscriber) => this.filterValidRecipient(subscriber))
+      .filter((subscriber): subscriber is TriggerRecipient => subscriber !== null);
+
+    return filteredRecipients.length > 0 ? filteredRecipients : null;
+  }
+
+  private filterValidRecipient(subscriber: TriggerRecipient): TriggerRecipient | null {
+    if (typeof subscriber === 'string') {
+      return this.isValidId(subscriber) ? subscriber : null;
+    }
+
+    if (typeof subscriber === 'object' && subscriber !== null) {
+      if ('topicKey' in subscriber) {
+        return subscriber;
+      }
+
+      if ('subscriberId' in subscriber) {
+        const subscriberId = this.isValidId(subscriber.subscriberId);
+
+        return subscriberId ? { ...subscriber, subscriberId } : null;
+      }
+    }
+
+    return null;
   }
 }

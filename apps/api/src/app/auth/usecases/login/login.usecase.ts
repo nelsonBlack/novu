@@ -1,13 +1,12 @@
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcrypt';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { differenceInMinutes, parseISO } from 'date-fns';
 import { UserRepository, UserEntity, OrganizationRepository } from '@novu/dal';
-import { AnalyticsService, AuthService } from '@novu/application-generic';
-
+import { AnalyticsService, createHash } from '@novu/application-generic';
+import { normalizeEmail } from '@novu/shared';
+import { AuthService } from '../../services/auth.service';
 import { LoginCommand } from './login.command';
 import { ApiException } from '../../../shared/exceptions/api.exception';
-import { normalizeEmail } from '../../../shared/helpers/email-normalization.service';
-import { createHash } from '../../../shared/helpers/hmac.service';
 
 @Injectable()
 export class Login {
@@ -32,7 +31,9 @@ export class Login {
       const maxWaitTime = 110;
       const minWaitTime = 90;
       const randomWaitTime = Math.floor(Math.random() * (maxWaitTime - minWaitTime) + minWaitTime);
-      await new Promise((resolve) => setTimeout(resolve, randomWaitTime)); // will wait randomly for the chosen time to sync response time
+      await new Promise((resolve) => {
+        setTimeout(resolve, randomWaitTime);
+      }); // will wait randomly for the chosen time to sync response time
 
       throw new UnauthorizedException('Incorrect email or password provided.');
     }
@@ -42,7 +43,8 @@ export class Login {
       throw new UnauthorizedException(`Account blocked, Please try again after ${blockedMinutesLeft} minutes`);
     }
 
-    if (!user.password) throw new ApiException('OAuth user login attempt');
+    // TODO: Trigger a password reset flow automatically for existing OAuth users instead of throwing an error
+    if (!user.password) throw new ApiException('Please sign in using Github.');
 
     const isMatching = await bcrypt.compare(command.password, user.password);
     if (!isMatching) {

@@ -1,13 +1,19 @@
 import { SpotlightProvider } from '@mantine/spotlight';
+import { Activity, Bolt, Box, Brand, Chat, IconLogout, Repeat, Settings, Team } from '@novu/design-system';
+import { UTM_CAMPAIGN_QUERY_PARAM } from '@novu/shared';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Bolt, Box, Settings, Repeat, Team, Brand, Chat } from '../../design-system/icons';
+
+import { ROUTES } from '../../constants/routes';
+import useThemeChange from '../../hooks/useThemeChange';
 import { useSpotlightContext } from '../providers/SpotlightProvider';
-import { ROUTES } from '../../constants/routes.enum';
+import useStyles from './Spotlight.styles';
 
 export const SpotLight = ({ children }) => {
   const navigate = useNavigate();
   const { items, addItem } = useSpotlightContext();
+  const { toggleColorScheme, Icon } = useThemeChange();
+  const { classes } = useStyles();
 
   useEffect(() => {
     addItem([
@@ -57,7 +63,7 @@ export const SpotLight = ({ children }) => {
         id: 'navigate-docs',
         title: 'Go to Documentation',
         onTrigger: () => {
-          window?.open('https://docs.novu.co/', '_blank')?.focus();
+          window?.open(`https://docs.novu.co${UTM_CAMPAIGN_QUERY_PARAM}`, '_blank')?.focus();
         },
       },
       {
@@ -75,11 +81,19 @@ export const SpotLight = ({ children }) => {
         },
         icon: <Chat />,
       },
+      {
+        id: 'toggle-theme',
+        title: 'Toggle Theme',
+        icon: <Icon title="color-scheme-preference-icon" />,
+        onTrigger: () => {
+          toggleColorScheme();
+        },
+      },
     ]);
-  }, [navigate, addItem]);
+  }, [navigate, addItem, Icon, toggleColorScheme]);
 
   return (
-    <SpotlightProvider limit={7} shortcut={['mod + K']} actions={items}>
+    <SpotlightProvider limit={7} shortcut={['mod + K']} actions={items} classNames={classes}>
       {children}
     </SpotlightProvider>
   );

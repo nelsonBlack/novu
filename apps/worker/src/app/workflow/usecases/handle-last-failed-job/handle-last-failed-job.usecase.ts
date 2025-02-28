@@ -1,20 +1,18 @@
+import { NotFoundError } from 'rxjs';
 import { Injectable, Logger } from '@nestjs/common';
+
 import { JobRepository } from '@novu/dal';
 import { ExecutionDetailsSourceEnum, ExecutionDetailsStatusEnum } from '@novu/shared';
-import * as Sentry from '@sentry/node';
 import {
+  DetailEnum,
   CreateExecutionDetails,
   CreateExecutionDetailsCommand,
-  DetailEnum,
   InstrumentUsecase,
 } from '@novu/application-generic';
 
 import { HandleLastFailedJobCommand } from './handle-last-failed-job.command';
-
 import { QueueNextJob, QueueNextJobCommand } from '../queue-next-job';
-import { SendMessage, SendMessageCommand } from '../send-message';
-import { PlatformException } from '../../../shared/utils';
-import { NotFoundError } from 'rxjs';
+import { PlatformException, shouldHaltOnStepFailure } from '../../../shared/utils';
 
 const LOG_CONTEXT = 'HandleLastFailedJob';
 
@@ -36,7 +34,7 @@ export class HandleLastFailedJob {
   public async execute(command: HandleLastFailedJobCommand): Promise<void> {
     const { jobId, error } = command;
 
-    const job = await this.jobRepository.findById(jobId);
+    const job = await this.jobRepository.findOne({ _id: jobId, _environmentId: command.environmentId });
     if (!job) {
       const message = `Job ${jobId} not found when handling the failure of the latest attempt for a backed off job`;
       Logger.error(message, new NotFoundError(message), LOG_CONTEXT);
@@ -55,7 +53,7 @@ export class HandleLastFailedJob {
       })
     );
 
-    if (!job?.step?.shouldStopOnFail) {
+    if (!shouldHaltOnStepFailure(job)) {
       await this.queueNextJob.execute(
         QueueNextJobCommand.create({
           parentId: job?._id,

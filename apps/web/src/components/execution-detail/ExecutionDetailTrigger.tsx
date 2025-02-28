@@ -1,6 +1,6 @@
 import styled from '@emotion/styled';
 
-import { Text } from '../../design-system';
+import { Text } from '@novu/design-system';
 import { getCurlTriggerSnippet } from '../../pages/templates/components/TriggerSnippetTabs';
 
 const TriggerTitle = styled(Text)`
@@ -11,9 +11,18 @@ const TriggerTitle = styled(Text)`
 `;
 
 export const ExecutionDetailTrigger = ({ identifier, step, subscriberVariables }) => {
-  const { payload, overrides, tenant } = step || {};
+  const { payload, overrides, tenant, actorId } = step || {};
 
-  const curlSnippet = getCurlTriggerSnippet(identifier, subscriberVariables, payload, overrides, { tenant });
+  const curlSnippet = getCurlTriggerSnippet({
+    identifier,
+    to: subscriberVariables,
+    payload,
+    overrides,
+    snippet: {
+      ...(tenant && { tenant }),
+      ...(actorId && { actor: { subscriberId: actorId } }),
+    },
+  });
 
   return (
     <>

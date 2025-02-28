@@ -1,11 +1,21 @@
 import { Grid, Text, useMantineTheme } from '@mantine/core';
 import { JobStatusEnum, StepTypeEnum } from '@novu/shared';
-import * as capitalize from 'lodash.capitalize';
+import capitalize from 'lodash.capitalize';
 import styled from '@emotion/styled';
-import { colors, shadows } from '../../../design-system';
-import { CheckCircle, ErrorIcon } from '../../../design-system/icons';
+import {
+  colors,
+  shadows,
+  CheckCircle,
+  ErrorIcon,
+  Digest,
+  Mail,
+  Mobile,
+  Chat,
+  Sms,
+  InApp,
+  Timer,
+} from '@novu/design-system';
 import { When } from '../../../components/utils/When';
-import { Digest, Mail, Mobile, Chat, Sms, InApp, Timer } from '../../../design-system/icons';
 
 const TypeIcon = ({ type }: { type: StepTypeEnum }) => {
   const theme = useMantineTheme();
@@ -35,7 +45,7 @@ const TypeIcon = ({ type }: { type: StepTypeEnum }) => {
 };
 
 export const ActivityStep = ({ job, span = 4, isOld }) => {
-  const status = job.status;
+  const { status } = job;
   const theme = useMantineTheme();
 
   return (

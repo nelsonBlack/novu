@@ -9,29 +9,21 @@ import {
   PushProviderIdEnum,
 } from '@novu/shared';
 
-const ORIGINAL_IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED;
-
-describe('Set Integration As Primary - /integrations/:integrationId/set-primary (POST)', function () {
+describe('Set Integration As Primary - /integrations/:integrationId/set-primary (POST) #novu-v2', function () {
   let session: UserSession;
   const integrationRepository = new IntegrationRepository();
 
   beforeEach(async () => {
     session = new UserSession();
     await session.initialize();
-    process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = 'true';
-  });
-
-  afterEach(async () => {
-    process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = ORIGINAL_IS_MULTI_PROVIDER_CONFIGURATION_ENABLED;
   });
 
   it('when integration id is not valid should throw bad request exception', async () => {
     const fakeIntegrationId = 'fakeIntegrationId';
 
     const { body } = await session.testAgent.post(`/v1/integrations/${fakeIntegrationId}/set-primary`).send({});
-
-    expect(body.statusCode).to.equal(400);
-    expect(body.message[0]).to.equal(`integrationId must be a mongodb id`);
+    expect(body.statusCode).to.equal(422);
+    expect(body.errors.integrationId.messages[0]).to.equal(`integrationId must be a mongodb id`);
   });
 
   it('when integration does not exist should throw not found exception', async () => {
@@ -228,7 +220,10 @@ describe('Set Integration As Primary - /integrations/:integrationId/set-primary 
     expect(data.active).to.equal(true);
     expect(data.priority).to.equal(2);
 
-    const updatedOldPrimary = (await integrationRepository.findById(oldPrimaryIntegration._id)) as IntegrationEntity;
+    const updatedOldPrimary = (await integrationRepository.findOne({
+      _id: oldPrimaryIntegration._id,
+      _environmentId: oldPrimaryIntegration._environmentId,
+    })) as IntegrationEntity;
 
     expect(updatedOldPrimary.primary).to.equal(false);
     expect(updatedOldPrimary.active).to.equal(true);

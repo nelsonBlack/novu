@@ -1,6 +1,8 @@
 import { IsDefined, IsOptional, IsString } from 'class-validator';
 import { NotificationStepEntity, JobEntity } from '@novu/dal';
 import { EnvironmentWithUserCommand } from '@novu/application-generic';
+import { ExecuteOutput } from '@novu/framework/internal';
+import { WorkflowPreferences } from '@novu/shared';
 
 export class SendMessageCommand extends EnvironmentWithUserCommand {
   @IsDefined()
@@ -9,6 +11,9 @@ export class SendMessageCommand extends EnvironmentWithUserCommand {
 
   @IsDefined()
   payload: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  @IsOptional()
+  compileContext?: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   @IsDefined()
   overrides: Record<string, Record<string, unknown>>;
@@ -23,8 +28,8 @@ export class SendMessageCommand extends EnvironmentWithUserCommand {
   @IsDefined()
   notificationId: string;
 
-  @IsDefined()
-  _templateId: string;
+  @IsOptional()
+  _templateId?: string;
 
   @IsDefined()
   subscriberId: string;
@@ -40,4 +45,13 @@ export class SendMessageCommand extends EnvironmentWithUserCommand {
 
   @IsDefined()
   job: JobEntity;
+
+  @IsOptional()
+  bridgeData?: ExecuteOutput | null;
+
+  @IsDefined()
+  tags: string[];
+
+  @IsOptional()
+  statelessPreferences?: WorkflowPreferences;
 }

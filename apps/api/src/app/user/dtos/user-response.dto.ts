@@ -1,11 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IUserEntity, JobTitleEnum } from '@novu/shared';
 
 export class ServicesHashesDto {
   @ApiProperty()
   intercom?: string;
+
+  @ApiProperty()
+  plain?: string;
 }
 
-export class UserResponseDto {
+export class UserResponseDto implements IUserEntity {
   @ApiProperty()
   _id: string;
 
@@ -35,4 +39,12 @@ export class UserResponseDto {
 
   @ApiProperty()
   servicesHashes?: ServicesHashesDto;
+
+  @ApiPropertyOptional({
+    enum: JobTitleEnum,
+  })
+  jobTitle?: JobTitleEnum;
+
+  @ApiProperty()
+  hasPassword: boolean;
 }

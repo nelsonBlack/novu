@@ -5,7 +5,6 @@ import {
   MessageRepository,
   SubscriberRepository,
   SubscriberEntity,
-  MemberRepository,
   FeedRepository,
 } from '@novu/dal';
 import { ChannelTypeEnum, WebSocketEventEnum } from '@novu/shared';
@@ -29,7 +28,6 @@ export class RemoveAllMessages {
     private webSocketsQueueService: WebSocketsQueueService,
     private analyticsService: AnalyticsService,
     private subscriberRepository: SubscriberRepository,
-    private memberRepository: MemberRepository,
     private feedRepository: FeedRepository
   ) {}
 
@@ -40,7 +38,7 @@ export class RemoveAllMessages {
     try {
       let feed;
       if (command.feedId) {
-        feed = await this.feedRepository.findById(command.feedId);
+        feed = await this.feedRepository.findOne({ _id: command.feedId, _organizationId: command.organizationId });
         if (!feed) {
           throw new NotFoundException(`Feed with ${command.feedId} not found`);
         }
@@ -62,15 +60,12 @@ export class RemoveAllMessages {
       await this.updateServices(command, subscriber, MarkEnum.SEEN);
       await this.updateServices(command, subscriber, MarkEnum.READ);
 
-      const admin = await this.memberRepository.getOrganizationAdminAccount(command.organizationId);
-      if (admin) {
-        this.analyticsService.track(`Removed All Feed Messages - [Notification Center]`, admin._userId, {
-          _subscriber: subscriber._id,
-          _organization: command.organizationId,
-          _environment: command.environmentId,
-          _feedId: command.feedId,
-        });
-      }
+      this.analyticsService.track(`Removed All Feed Messages - [Notification Center]`, command.organizationId, {
+        _subscriber: subscriber._id,
+        _organization: command.organizationId,
+        _environment: command.environmentId,
+        _feedId: command.feedId,
+      });
 
       await this.invalidateCache.invalidateQuery({
         key: buildFeedKey().invalidate({
@@ -100,15 +95,14 @@ export class RemoveAllMessages {
   private updateSocketCount(subscriber: SubscriberEntity, mark: string) {
     const eventMessage = mark === MarkEnum.READ ? WebSocketEventEnum.UNREAD : WebSocketEventEnum.UNSEEN;
 
-    this.webSocketsQueueService.add(
-      'sendMessage',
-      {
+    this.webSocketsQueueService.add({
+      name: 'sendMessage',
+      data: {
         event: eventMessage,
         userId: subscriber._id,
         _environmentId: subscriber._environmentId,
       },
-      undefined,
-      subscriber._organizationId
-    );
+      groupId: subscriber._organizationId,
+    });
   }
 }

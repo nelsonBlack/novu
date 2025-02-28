@@ -1,30 +1,17 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { DalService, SubscriberRepository, NotificationRepository, MessageRepository } from '@novu/dal';
 import {
-  DalService,
-  UserRepository,
-  OrganizationRepository,
-  EnvironmentRepository,
-  NotificationTemplateRepository,
-  SubscriberRepository,
-  NotificationRepository,
-  MessageRepository,
-  MemberRepository,
-} from '@novu/dal';
-import { AnalyticsService, DalServiceHealthIndicator } from '@novu/application-generic';
+  AnalyticsService,
+  DalServiceHealthIndicator,
+  WebSocketsInMemoryProviderService,
+  QueuesModule,
+} from '@novu/application-generic';
 
+import { JobTopicNameEnum } from '@novu/shared';
 import { SubscriberOnlineService } from './subscriber-online';
 
-const DAL_MODELS = [
-  UserRepository,
-  OrganizationRepository,
-  EnvironmentRepository,
-  NotificationTemplateRepository,
-  SubscriberRepository,
-  NotificationRepository,
-  MessageRepository,
-  MemberRepository,
-];
+const DAL_MODELS = [SubscriberRepository, NotificationRepository, MessageRepository];
 
 const dalService = {
   provide: DalService,
@@ -46,10 +33,18 @@ const analyticsService = {
   },
 };
 
-const PROVIDERS = [analyticsService, dalService, DalServiceHealthIndicator, SubscriberOnlineService, ...DAL_MODELS];
+const PROVIDERS = [
+  analyticsService,
+  dalService,
+  DalServiceHealthIndicator,
+  SubscriberOnlineService,
+  WebSocketsInMemoryProviderService,
+  ...DAL_MODELS,
+];
 
 @Module({
   imports: [
+    QueuesModule.forRoot([JobTopicNameEnum.WEB_SOCKETS]),
     JwtModule.register({
       secretOrKeyProvider: () => process.env.JWT_SECRET as string,
       signOptions: {
@@ -58,6 +53,6 @@ const PROVIDERS = [analyticsService, dalService, DalServiceHealthIndicator, Subs
     }),
   ],
   providers: [...PROVIDERS],
-  exports: [...PROVIDERS, JwtModule],
+  exports: [...PROVIDERS, JwtModule, QueuesModule],
 })
 export class SharedModule {}

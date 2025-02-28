@@ -3,25 +3,25 @@ import { EnvironmentRepository } from '@novu/dal';
 import { ChannelTypeEnum, InAppProviderIdEnum } from '@novu/shared';
 import {
   AnalyticsService,
+  createHash,
+  CreateOrUpdateSubscriberCommand,
+  CreateOrUpdateSubscriberUseCase,
+  decryptApiKey,
   LogDecorator,
-  CreateSubscriber,
-  CreateSubscriberCommand,
-  SelectIntegrationCommand,
   SelectIntegration,
-  AuthService,
+  SelectIntegrationCommand,
 } from '@novu/application-generic';
-
+import { AuthService } from '../../../auth/services/auth.service';
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { InitializeSessionCommand } from './initialize-session.command';
 
 import { SessionInitializeResponseDto } from '../../dtos/session-initialize-response.dto';
-import { createHash } from '../../../shared/helpers/hmac.service';
 
 @Injectable()
 export class InitializeSession {
   constructor(
     private environmentRepository: EnvironmentRepository,
-    private createSubscriber: CreateSubscriber,
+    private createOrUpdateSubscriberUsecase: CreateOrUpdateSubscriberUseCase,
     private authService: AuthService,
     private selectIntegration: SelectIntegration,
     private analyticsService: AnalyticsService
@@ -39,7 +39,6 @@ export class InitializeSession {
       SelectIntegrationCommand.create({
         environmentId: environment._id,
         organizationId: environment._organizationId,
-        userId: command.subscriberId,
         channelType: ChannelTypeEnum.IN_APP,
         providerId: InAppProviderIdEnum.Novu,
         filterData: {},
@@ -54,7 +53,7 @@ export class InitializeSession {
       validateNotificationCenterEncryption(environment, command);
     }
 
-    const commandos = CreateSubscriberCommand.create({
+    const commandos = CreateOrUpdateSubscriberCommand.create({
       environmentId: environment._id,
       organizationId: environment._organizationId,
       subscriberId: command.subscriberId,
@@ -62,10 +61,11 @@ export class InitializeSession {
       lastName: command.lastName,
       email: command.email,
       phone: command.phone,
+      isUpsert: true,
     });
-    const subscriber = await this.createSubscriber.execute(commandos);
+    const subscriber = await this.createOrUpdateSubscriberUsecase.execute(commandos);
 
-    this.analyticsService.track('Initialize Widget Session - [Notification Center]', environment._organizationId, {
+    this.analyticsService.mixpanelTrack('Initialize Widget Session - [Notification Center]', '', {
       _organization: environment._organizationId,
       environmentName: environment.name,
       _subscriber: subscriber._id,
@@ -84,7 +84,8 @@ export class InitializeSession {
 }
 
 function validateNotificationCenterEncryption(environment, command: InitializeSessionCommand) {
-  const hmacHash = createHash(environment.apiKeys[0].key, command.subscriberId);
+  const key = decryptApiKey(environment.apiKeys[0].key);
+  const hmacHash = createHash(key, command.subscriberId);
   if (hmacHash !== command.hmacHash) {
     throw new ApiException('Please provide a valid HMAC hash');
   }

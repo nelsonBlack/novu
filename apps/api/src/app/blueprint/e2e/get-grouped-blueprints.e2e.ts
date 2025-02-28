@@ -1,23 +1,31 @@
 import { expect } from 'chai';
-import * as sinon from 'sinon';
+import sinon from 'sinon';
 
 import { UserSession } from '@novu/testing';
-import { NotificationTemplateRepository, EnvironmentRepository } from '@novu/dal';
-import { EmailBlockTypeEnum, FilterPartTypeEnum, INotificationTemplate, StepTypeEnum } from '@novu/shared';
+import { NotificationTemplateRepository, EnvironmentRepository, EnvironmentEntity } from '@novu/dal';
+import {
+  EmailBlockTypeEnum,
+  FieldLogicalOperatorEnum,
+  FieldOperatorEnum,
+  FilterPartTypeEnum,
+  INotificationTemplate,
+  INotificationTemplateStep,
+  StepTypeEnum,
+} from '@novu/shared';
 import {
   buildGroupedBlueprintsKey,
+  CacheInMemoryProviderService,
   CacheService,
-  InMemoryProviderEnum,
-  InMemoryProviderService,
   InvalidateCacheService,
 } from '@novu/application-generic';
 
 import { GroupedBlueprintResponse } from '../dto/grouped-blueprint.response.dto';
-import { CreateWorkflowRequestDto } from '../../workflows/dto';
 import { GetGroupedBlueprints, POPULAR_TEMPLATES_ID_LIST } from '../usecases/get-grouped-blueprints';
+// eslint-disable-next-line import/no-namespace
 import * as blueprintStaticModule from '../usecases/get-grouped-blueprints/consts';
+import { CreateWorkflowRequestDto } from '../../workflows-v1/dto';
 
-describe('Get grouped notification template blueprints - /blueprints/group-by-category (GET)', async () => {
+describe('Get grouped notification template blueprints - /blueprints/group-by-category (GET) #novu-v1', async () => {
   let session: UserSession;
   const notificationTemplateRepository: NotificationTemplateRepository = new NotificationTemplateRepository();
   const environmentRepository: EnvironmentRepository = new EnvironmentRepository();
@@ -27,8 +35,8 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
   let indexModuleStub: sinon.SinonStub;
 
   before(async () => {
-    const inMemoryProviderService = new InMemoryProviderService(InMemoryProviderEnum.REDIS);
-    const cacheService = new CacheService(inMemoryProviderService);
+    const cacheInMemoryProviderService = new CacheInMemoryProviderService();
+    const cacheService = new CacheService(cacheInMemoryProviderService);
     await cacheService.initialize();
     invalidateCache = new InvalidateCacheService(cacheService);
 
@@ -45,6 +53,7 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
 
   it('should get the grouped blueprints', async function () {
     const prodEnv = await getProductionEnvironment();
+    if (!prodEnv) throw new Error('production environment was not found');
 
     await createTemplateFromBlueprint({ session, notificationTemplateRepository, prodEnv });
 
@@ -64,16 +73,18 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
         expect(blueprint.active).to.equal(false);
         expect(blueprint.critical).to.equal(false);
         expect(blueprint.steps).to.be.exist;
-        expect(blueprint.steps[0].active).to.equal(true);
-        expect(blueprint.steps[0].template).to.exist;
-        expect(blueprint.steps[0].template?.name).to.be.equal('Message Name');
-        expect(blueprint.steps[0].template?.subject).to.be.equal('Test email subject');
+        const step: INotificationTemplateStep = blueprint.steps[0] as INotificationTemplateStep;
+        expect(step.active).to.equal(true);
+        expect(step.template).to.exist;
+        expect(step.template?.name).to.be.equal('Message Name');
+        expect(step.template?.subject).to.be.equal('Test email subject');
       }
     }
   });
 
   it('should get the updated grouped blueprints (after invalidation)', async function () {
     const prodEnv = await getProductionEnvironment();
+    if (!prodEnv) throw new Error('production environment was not found');
 
     await createTemplateFromBlueprint({
       session,
@@ -81,11 +92,9 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
       prodEnv,
     });
 
-    const data = await session.testAgent.get(`/v1/blueprints/group-by-category`).send();
-
-    expect(data.statusCode).to.equal(200);
-
-    const groupedBlueprints = (data.body.data as GroupedBlueprintResponse).general;
+    const res1 = await session.testAgent.get(`/v1/blueprints/group-by-category`).send();
+    expect(res1.statusCode).to.equal(200);
+    const groupedBlueprints = (res1.body.data as GroupedBlueprintResponse).general;
 
     expect(groupedBlueprints.length).to.equal(1);
     expect(groupedBlueprints[0].name).to.equal('General');
@@ -93,9 +102,9 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
     const categoryName = 'Life Style';
     await updateBlueprintCategory({ categoryName });
 
-    let updatedGroupedBluePrints = await session.testAgent.get(`/v1/blueprints/group-by-category`).send();
-
-    updatedGroupedBluePrints = (updatedGroupedBluePrints.body.data as GroupedBlueprintResponse).general;
+    const res2 = await session.testAgent.get(`/v1/blueprints/group-by-category`).send();
+    expect(res2.statusCode).to.equal(200);
+    const updatedGroupedBluePrints = (res2.body.data as GroupedBlueprintResponse).general;
 
     expect(updatedGroupedBluePrints.length).to.equal(2);
     expect(updatedGroupedBluePrints[0].name).to.equal('General');
@@ -104,6 +113,8 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
 
   it('should update the static POPULAR_TEMPLATES_GROUPED with fresh data', async () => {
     const prodEnv = await getProductionEnvironment();
+    if (!prodEnv) throw new Error('production environment was not found');
+
     await createTemplateFromBlueprint({ session, notificationTemplateRepository, prodEnv });
 
     const data = await session.testAgent.get(`/v1/blueprints/group-by-category`).send();
@@ -120,7 +131,7 @@ describe('Get grouped notification template blueprints - /blueprints/group-by-ca
     indexModuleStub.value(mockedValue);
 
     await invalidateCache.invalidateByKey({
-      key: buildGroupedBlueprintsKey(),
+      key: buildGroupedBlueprintsKey(prodEnv._id),
     });
 
     const updatedBlueprintFromDb = (await session.testAgent.get(`/v1/blueprints/group-by-category`).send()).body.data
@@ -157,7 +168,7 @@ export async function createTemplateFromBlueprint({
 }: {
   session: UserSession;
   notificationTemplateRepository: NotificationTemplateRepository;
-  prodEnv;
+  prodEnv: EnvironmentEntity;
 }) {
   const testTemplateRequestDto: Partial<CreateWorkflowRequestDto> = {
     name: 'test email template',
@@ -177,13 +188,13 @@ export async function createTemplateFromBlueprint({
           {
             isNegated: false,
             type: 'GROUP',
-            value: 'AND',
+            value: FieldLogicalOperatorEnum.AND,
             children: [
               {
                 on: FilterPartTypeEnum.SUBSCRIBER,
                 field: 'firstName',
                 value: 'test value',
-                operator: 'EQUAL',
+                operator: FieldOperatorEnum.EQUAL,
               },
             ],
           },
@@ -204,8 +215,6 @@ export async function createTemplateFromBlueprint({
   await session.applyChanges({
     enabled: false,
   });
-
-  if (!prodEnv) throw new Error('production environment was not found');
 
   const blueprintId = (
     await notificationTemplateRepository.findOne({

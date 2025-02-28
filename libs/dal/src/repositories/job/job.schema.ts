@@ -1,9 +1,7 @@
-import * as mongoose from 'mongoose';
-import { Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 import { schemaOptions } from '../schema-default.options';
 import { JobDBModel, JobStatusEnum } from './job.entity';
-import { getTTLOptions } from '../../shared';
 
 const jobSchema = new Schema<JobDBModel>(
   {
@@ -39,6 +37,10 @@ const jobSchema = new Schema<JobDBModel>(
     _notificationId: {
       type: Schema.Types.ObjectId,
       ref: 'Notification',
+    },
+    _mergedDigestId: {
+      type: String,
+      ref: 'Job',
     },
     subscriberId: {
       type: Schema.Types.String,
@@ -77,6 +79,9 @@ const jobSchema = new Schema<JobDBModel>(
       digestKey: {
         type: Schema.Types.String,
       },
+      digestValue: {
+        type: Schema.Types.String,
+      },
       type: {
         type: Schema.Types.String,
       },
@@ -93,6 +98,9 @@ const jobSchema = new Schema<JobDBModel>(
         type: Schema.Types.Boolean,
       },
       timed: {
+        cronExpression: {
+          type: Schema.Types.String,
+        },
         atTime: {
           type: Schema.Types.String,
         },
@@ -119,12 +127,14 @@ const jobSchema = new Schema<JobDBModel>(
       type: Schema.Types.ObjectId,
       ref: 'Subscriber',
     },
-    expireAt: Schema.Types.Date,
+    actorId: {
+      type: Schema.Types.String,
+    },
+    stepOutput: Schema.Types.Mixed,
+    preferences: Schema.Types.Mixed,
   },
   schemaOptions
 );
-
-jobSchema.index({ expireAt: 1 }, getTTLOptions());
 
 jobSchema.virtual('executionDetails', {
   ref: 'ExecutionDetails',
@@ -376,9 +386,18 @@ jobSchema.index({
   _notificationId: 1,
 });
 
-jobSchema.index({
-  _environmentId: 1,
-});
+jobSchema.index(
+  {
+    _mergedDigestId: 1,
+  },
+  {
+    sparse: true,
+  }
+);
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
+/*
+ * This index was created to push entries to Online Archive
+ */
+jobSchema.index({ createdAt: 1 });
+
 export const Job = (mongoose.models.Job as mongoose.Model<JobDBModel>) || mongoose.model<JobDBModel>('Job', jobSchema);

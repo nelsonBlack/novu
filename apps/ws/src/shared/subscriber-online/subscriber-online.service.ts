@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ISubscriberJwt } from '@novu/shared';
-import { SubscriberRepository, MemberRepository } from '@novu/dal';
+import { SubscriberRepository } from '@novu/dal';
 
 interface IUpdateSubscriberPayload {
   isOnline: boolean;
@@ -20,6 +20,7 @@ export class SubscriberOnlineService {
   async handleDisconnection(subscriber: ISubscriberJwt, activeConnections: number) {
     const lastOnlineAt = new Date().toISOString();
     let isOnline = false;
+
     if (activeConnections > 1) {
       isOnline = true;
     }
@@ -29,7 +30,7 @@ export class SubscriberOnlineService {
 
   private async updateOnlineStatus(subscriber: ISubscriberJwt, updatePayload: IUpdateSubscriberPayload) {
     await this.subscriberRepository.update(
-      { _id: subscriber._id, _organizationId: subscriber.organizationId },
+      { _id: subscriber._id, _environmentId: subscriber.environmentId },
       {
         $set: updatePayload,
       }

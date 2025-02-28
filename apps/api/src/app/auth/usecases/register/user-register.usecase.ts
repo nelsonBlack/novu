@@ -1,15 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OrganizationEntity, UserRepository } from '@novu/dal';
-import * as bcrypt from 'bcrypt';
-import { SignUpOriginEnum } from '@novu/shared';
-import { AnalyticsService, AuthService } from '@novu/application-generic';
-
+import { hash } from 'bcrypt';
+import { SignUpOriginEnum, normalizeEmail } from '@novu/shared';
+import { AnalyticsService, createHash } from '@novu/application-generic';
+import { AuthService } from '../../services/auth.service';
 import { UserRegisterCommand } from './user-register.command';
-import { normalizeEmail } from '../../../shared/helpers/email-normalization.service';
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { CreateOrganization } from '../../../organization/usecases/create-organization/create-organization.usecase';
 import { CreateOrganizationCommand } from '../../../organization/usecases/create-organization/create-organization.command';
-import { createHash } from '../../../shared/helpers/hmac.service';
 
 @Injectable()
 export class UserRegister {
@@ -27,7 +25,7 @@ export class UserRegister {
     const existingUser = await this.userRepository.findByEmail(email);
     if (existingUser) throw new ApiException('User already exists');
 
-    const passwordHash = await bcrypt.hash(command.password, 10);
+    const passwordHash = await hash(command.password, 10);
     const user = await this.userRepository.create({
       email,
       firstName: command.firstName.toLowerCase(),
@@ -54,6 +52,9 @@ export class UserRegister {
         CreateOrganizationCommand.create({
           name: command.organizationName,
           userId: user._id,
+          jobTitle: command.jobTitle,
+          domain: command.domain,
+          language: command.language,
         })
       );
     }
@@ -63,6 +64,7 @@ export class UserRegister {
     this.analyticsService.track('[Authentication] - Signup', user._id, {
       loginType: 'email',
       origin: command.origin || SignUpOriginEnum.WEB,
+      wasInvited: Boolean(command.wasInvited),
     });
 
     return {

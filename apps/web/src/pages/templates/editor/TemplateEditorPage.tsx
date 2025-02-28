@@ -1,42 +1,40 @@
-import { useEffect } from 'react';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ReactFlowProvider } from 'react-flow-renderer';
-import { FieldErrors, useFormContext } from 'react-hook-form';
+import { useFormContext } from 'react-hook-form';
 
+import { isBridgeWorkflow, WorkflowTypeEnum } from '@novu/shared';
 import PageContainer from '../../../components/layout/components/PageContainer';
 import type { IForm } from '../components/formTypes';
 import WorkflowEditor from '../workflow/WorkflowEditor';
-import { useEnvController, usePrompt } from '../../../hooks';
+import { useEnvironment, usePrompt } from '../../../hooks';
 import { BlueprintModal } from '../components/BlueprintModal';
 import { TemplateEditorFormProvider, useTemplateEditorForm } from '../components/TemplateEditorFormProvider';
-import { errorMessage } from '../../../utils/notifications';
-import { getExplicitErrors } from '../shared/errors';
-import { ROUTES } from '../../../constants/routes.enum';
+import { ROUTES } from '../../../constants/routes';
 import { TourProvider } from './TourProvider';
 import { NavigateValidatorModal } from '../components/NavigateValidatorModal';
 import { useTourStorage } from '../hooks/useTourStorage';
 import { useBasePath } from '../hooks/useBasePath';
+import { TemplateDetailsPageV2 } from '../editor_v2/TemplateDetailsPageV2';
+import { WorkflowDetailFormContextProvider } from '../../../studio/components/workflows/preferences/WorkflowDetailFormContextProvider';
 
 function BaseTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { environment } = useEnvController();
-  const { template, isCreating, onSubmit } = useTemplateEditorForm();
+  const { template, isCreating, onSubmit, onInvalid } = useTemplateEditorForm();
+  const { environment, bridge } = useEnvironment({ bridge: template?.bridge });
   const methods = useFormContext<IForm>();
   const { handleSubmit } = methods;
   const tourStorage = useTourStorage();
   const { templateId = '' } = useParams<{ templateId: string }>();
   const isTouring = tourStorage.getCurrentTour('digest', templateId) > -1;
   const basePath = useBasePath();
+  const [shouldRenderBlueprintModal, setShouldRenderBlueprintModal] = useState(false);
 
   const isCreateTemplatePage = location.pathname === ROUTES.WORKFLOWS_CREATE;
 
-  const onInvalid = async (errors: FieldErrors<IForm>) => {
-    errorMessage(getExplicitErrors(errors));
-  };
-
   const [showNavigateValidatorModal, confirmNavigate, cancelNavigate] = usePrompt(
-    !methods.formState.isValid && location.pathname !== ROUTES.WORKFLOWS_CREATE && !isTouring,
+    !methods.formState.isValid && !bridge && location.pathname !== ROUTES.WORKFLOWS_CREATE && !isTouring,
     (nextLocation) => {
       if (nextLocation.location.pathname.includes(basePath)) {
         nextLocation.retry();
@@ -53,12 +51,17 @@ function BaseTemplateEditorPage() {
   };
 
   useEffect(() => {
-    if (environment && template) {
+    if (environment && template && template._environmentId) {
       if (environment._id !== template._environmentId) {
         navigate(ROUTES.WORKFLOWS);
       }
     }
   }, [navigate, environment, template]);
+
+  useEffect(() => {
+    const id = localStorage.getItem('blueprintId');
+    setShouldRenderBlueprintModal(!!id);
+  }, []);
 
   if (environment && environment?.name === 'Production' && isCreateTemplatePage) {
     navigate(ROUTES.WORKFLOWS);
@@ -68,7 +71,8 @@ function BaseTemplateEditorPage() {
 
   return (
     <>
-      <TourProvider />
+      {!bridge && <TourProvider />}
+
       <PageContainer title={template?.name ?? 'Create Template'}>
         <form
           name="template-form"
@@ -81,7 +85,7 @@ function BaseTemplateEditorPage() {
           </ReactFlowProvider>
         </form>
       </PageContainer>
-      <BlueprintModal />
+      {shouldRenderBlueprintModal && <BlueprintModal />}
       <NavigateValidatorModal
         isOpen={showNavigateValidatorModal}
         onConfirm={confirmNavigate}
@@ -92,9 +96,20 @@ function BaseTemplateEditorPage() {
 }
 
 export default function TemplateEditorPage() {
-  return (
-    <TemplateEditorFormProvider>
-      <BaseTemplateEditorPage />
-    </TemplateEditorFormProvider>
-  );
+  const [searchParams] = useSearchParams();
+  const type = searchParams.get('type');
+
+  if (!type || !isBridgeWorkflow(type as WorkflowTypeEnum)) {
+    return (
+      <TemplateEditorFormProvider>
+        <BaseTemplateEditorPage />
+      </TemplateEditorFormProvider>
+    );
+  } else {
+    return (
+      <WorkflowDetailFormContextProvider>
+        <TemplateDetailsPageV2 />
+      </WorkflowDetailFormContextProvider>
+    );
+  }
 }

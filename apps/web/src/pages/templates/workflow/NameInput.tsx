@@ -1,15 +1,17 @@
 import { TextInput, useMantineColorScheme } from '@mantine/core';
 import { colors } from '@novu/notification-center';
 import { Controller, useFormContext } from 'react-hook-form';
-import { useEnvController } from '../../../hooks';
+import { useEnvironment } from '../../../hooks';
 import { IForm } from '../components/formTypes';
+import { useTemplateEditorForm } from '../components/TemplateEditorFormProvider';
 
 export const NameInput = () => {
   const {
     control,
     formState: { errors, isSubmitted },
   } = useFormContext<IForm>();
-  const { readonly } = useEnvController();
+  const { template } = useTemplateEditorForm();
+  const { readonly } = useEnvironment({ bridge: template?.bridge });
   const showErrors = isSubmitted && errors?.steps;
   const { colorScheme } = useMantineColorScheme();
 
@@ -61,7 +63,7 @@ export const NameInput = () => {
             value={field.value || ''}
             error={showErrors && fieldState.error?.message}
             type="text"
-            data-test-id="title"
+            data-test-id="name-input"
             placeholder="Enter workflow name"
             disabled={readonly}
           />

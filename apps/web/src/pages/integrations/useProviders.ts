@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import * as cloneDeep from 'lodash.clonedeep';
+import cloneDeep from 'lodash.clonedeep';
 import {
   ChannelTypeEnum,
   IConfigCredentials,
@@ -9,9 +9,9 @@ import {
   PushProviderIdEnum,
 } from '@novu/shared';
 
-import { useIntegrations, useIsMultiProviderConfigurationEnabled } from '../../hooks';
+import { useIntegrations } from '../../hooks';
 import type { IIntegratedProvider, IntegrationEntity } from './types';
-import { IS_DOCKER_HOSTED } from '../../config';
+import { IS_SELF_HOSTED } from '../../config';
 
 /*
  * temporary patch before migration script
@@ -24,55 +24,17 @@ function fcmFallback(integration: IntegrationEntity | undefined, clonedCredentia
 
     clonedCredentials?.forEach((cred) => {
       if (cred.key === 'serviceAccount') {
+        // eslint-disable-next-line no-param-reassign
         cred.value = serviceAccount;
       }
     });
   }
 }
 
-function initializeProviders(integrations: IntegrationEntity[]): IIntegratedProvider[] {
-  return providers
-    .filter((provider) => !NOVU_SMS_EMAIL_PROVIDERS.includes(provider.id))
-    .map((providerItem) => {
-      const integration = integrations.find((integrationItem) => integrationItem.providerId === providerItem.id);
-
-      const clonedCredentials = cloneDeep(providerItem.credentials);
-
-      if (integration?.credentials && Object.keys(clonedCredentials).length !== 0) {
-        clonedCredentials.forEach((credential) => {
-          // eslint-disable-next-line no-param-reassign
-          credential.value =
-            credential.type === 'boolean' || credential.type === 'switch'
-              ? integration.credentials[credential.key]
-              : integration.credentials[credential.key]?.toString();
-        });
-      }
-
-      // Remove this like after the run of the fcm-credentials-migration script
-      fcmFallback(integration, clonedCredentials);
-
-      return {
-        providerId: providerItem.id,
-        integrationId: integration?._id ? integration._id : '',
-        displayName: providerItem.displayName,
-        channel: providerItem.channel,
-        credentials: integration?.credentials ? clonedCredentials : providerItem.credentials,
-        docReference: providerItem.docReference,
-        comingSoon: !!providerItem.comingSoon,
-        betaVersion: !!providerItem.betaVersion,
-        active: integration?.active ?? false,
-        connected: !!integration,
-        logoFileName: providerItem.logoFileName,
-        environmentId: integration?._environmentId,
-        primary: integration?.primary ?? false,
-      };
-    });
-}
-
 function initializeProvidersByIntegration(integrations: IntegrationEntity[]): IIntegratedProvider[] {
   return integrations
     .filter((integrationItem) => {
-      if (!IS_DOCKER_HOSTED) {
+      if (!IS_SELF_HOSTED) {
         return true;
       }
 
@@ -90,6 +52,7 @@ function initializeProvidersByIntegration(integrations: IntegrationEntity[]): II
       ) {
         clonedCredentials.forEach((credential) => {
           if (credential.type === 'boolean' || credential.type === 'switch') {
+            // eslint-disable-next-line no-param-reassign
             credential.value = integrationItem.credentials[credential.key];
 
             return;
@@ -103,11 +66,14 @@ function initializeProvidersByIntegration(integrations: IntegrationEntity[]): II
       // Remove this like after the run of the fcm-credentials-migration script
       fcmFallback(integrationItem, clonedCredentials);
 
+      const hasCredentials = integrationItem?.credentials && Object.keys(integrationItem?.credentials).length !== 0;
+
       return {
         providerId: providerItem?.id || integrationItem.providerId,
         integrationId: integrationItem?._id ? integrationItem._id : '',
         displayName: providerItem?.displayName || integrationItem.name,
         channel: providerItem?.channel || integrationItem.channel,
+        hasCredentials,
         credentials: (integrationItem?.credentials ? clonedCredentials : providerItem?.credentials) || [],
         docReference: providerItem?.docReference || '',
         comingSoon: !!providerItem?.comingSoon,
@@ -120,6 +86,7 @@ function initializeProvidersByIntegration(integrations: IntegrationEntity[]): II
         identifier: integrationItem?.identifier,
         primary: integrationItem?.primary ?? false,
         conditions: integrationItem?.conditions ?? [],
+        removeNovuBranding: integrationItem?.removeNovuBranding ?? false,
       };
     });
 }
@@ -140,13 +107,10 @@ const sortProviders = (unsortedProviders: IIntegratedProvider[]) => {
 
 export const useProviders = () => {
   const { integrations, loading: isLoading, refetch } = useIntegrations();
-  const isMultiProviderConfigurationEnabled = useIsMultiProviderConfigurationEnabled();
 
   const sortedProviders = useMemo(() => {
     if (integrations) {
-      const initializedProviders = isMultiProviderConfigurationEnabled
-        ? initializeProvidersByIntegration(integrations)
-        : initializeProviders(integrations);
+      const initializedProviders = initializeProvidersByIntegration(integrations);
 
       return {
         emailProviders: sortProviders(
@@ -176,7 +140,7 @@ export const useProviders = () => {
       inAppProvider: [],
       providers: [],
     };
-  }, [isMultiProviderConfigurationEnabled, integrations]);
+  }, [integrations]);
 
   return {
     ...sortedProviders,

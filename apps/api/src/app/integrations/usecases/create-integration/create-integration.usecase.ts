@@ -1,27 +1,26 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
-import * as shortid from 'shortid';
-import slugify from 'slugify';
-import { IntegrationEntity, IntegrationRepository, DalException, IntegrationQuery } from '@novu/dal';
+import shortid from 'shortid';
+import { DalException, IntegrationEntity, IntegrationQuery, IntegrationRepository } from '@novu/dal';
 import {
+  CHANNELS_WITH_PRIMARY,
   ChannelTypeEnum,
   EmailProviderIdEnum,
-  providers,
-  SmsProviderIdEnum,
   InAppProviderIdEnum,
-  CHANNELS_WITH_PRIMARY,
+  providers,
+  slugify,
+  SmsProviderIdEnum,
 } from '@novu/shared';
 import {
   AnalyticsService,
-  encryptCredentials,
+  areNovuEmailCredentialsSet,
+  areNovuSmsCredentialsSet,
   buildIntegrationKey,
+  encryptCredentials,
   InvalidateCacheService,
-  GetIsMultiProviderConfigurationEnabled,
-  FeatureFlagCommand,
 } from '@novu/application-generic';
 
 import { CreateIntegrationCommand } from './create-integration.command';
 import { ApiException } from '../../../shared/exceptions/api.exception';
-import { DeactivateSimilarChannelIntegrations } from '../deactivate-integration/deactivate-integration.usecase';
 import { CheckIntegrationCommand } from '../check-integration/check-integration.command';
 import { CheckIntegration } from '../check-integration/check-integration.usecase';
 
@@ -32,9 +31,7 @@ export class CreateIntegration {
   constructor(
     private invalidateCache: InvalidateCacheService,
     private integrationRepository: IntegrationRepository,
-    private deactivateSimilarChannelIntegrations: DeactivateSimilarChannelIntegrations,
-    private analyticsService: AnalyticsService,
-    private getIsMultiProviderConfigurationEnabled: GetIsMultiProviderConfigurationEnabled
+    private analyticsService: AnalyticsService
   ) {}
 
   private async calculatePriorityAndPrimary(command: CreateIntegrationCommand) {
@@ -65,31 +62,18 @@ export class CreateIntegration {
       );
     } else {
       result.priority = highestPriorityIntegration ? highestPriorityIntegration.priority + 1 : 1;
+      result.primary = true;
     }
 
     return result;
   }
 
-  async execute(command: CreateIntegrationCommand): Promise<IntegrationEntity> {
-    const isMultiProviderConfigurationEnabled = await this.getIsMultiProviderConfigurationEnabled.execute(
-      FeatureFlagCommand.create({
-        userId: command.userId,
-        organizationId: command.organizationId,
-        environmentId: command.environmentId,
-      })
-    );
-
+  private async validate(command: CreateIntegrationCommand): Promise<void> {
     const existingIntegration = await this.integrationRepository.findOne({
       _environmentId: command.environmentId,
       providerId: command.providerId,
       channel: command.channel,
     });
-
-    if (!isMultiProviderConfigurationEnabled && existingIntegration) {
-      throw new BadRequestException(
-        'Duplicate key - One environment may not have two providers of the same channel type'
-      );
-    }
 
     if (
       existingIntegration &&
@@ -97,6 +81,13 @@ export class CreateIntegration {
       command.channel === ChannelTypeEnum.IN_APP
     ) {
       throw new BadRequestException('One environment can only have one In app provider');
+    }
+
+    if (
+      (command.providerId === SmsProviderIdEnum.Novu && !areNovuSmsCredentialsSet()) ||
+      (command.providerId === EmailProviderIdEnum.Novu && !areNovuEmailCredentialsSet())
+    ) {
+      throw new BadRequestException(`Creating Novu integration for ${command.providerId} provider is not allowed`);
     }
 
     if (command.providerId === SmsProviderIdEnum.Novu || command.providerId === EmailProviderIdEnum.Novu) {
@@ -116,6 +107,7 @@ export class CreateIntegration {
     if (command.identifier) {
       const existingIntegrationWithIdentifier = await this.integrationRepository.findOne({
         _organizationId: command.organizationId,
+        _environmentId: command.environmentId,
         identifier: command.identifier,
       });
 
@@ -123,6 +115,10 @@ export class CreateIntegration {
         throw new ConflictException('Integration with identifier already exists');
       }
     }
+  }
+
+  async execute(command: CreateIntegrationCommand): Promise<IntegrationEntity> {
+    await this.validate(command);
 
     this.analyticsService.track('Create Integration - [Integrations]', command.userId, {
       providerId: command.providerId,
@@ -153,7 +149,7 @@ export class CreateIntegration {
       const defaultName =
         providers.find((provider) => provider.id === command.providerId)?.displayName ?? providerIdCapitalized;
       const name = command.name ?? defaultName;
-      const identifier = command.identifier ?? `${slugify(name, { lower: true, strict: true })}-${shortid.generate()}`;
+      const identifier = command.identifier ?? `${slugify(name)}-${shortid.generate()}`;
 
       const query: IntegrationQuery = {
         name,
@@ -169,7 +165,7 @@ export class CreateIntegration {
 
       const isActiveAndChannelSupportsPrimary = command.active && CHANNELS_WITH_PRIMARY.includes(command.channel);
 
-      if (isMultiProviderConfigurationEnabled && isActiveAndChannelSupportsPrimary) {
+      if (isActiveAndChannelSupportsPrimary) {
         const { primary, priority } = await this.calculatePriorityAndPrimary(command);
 
         query.primary = primary;
@@ -177,20 +173,6 @@ export class CreateIntegration {
       }
 
       const integrationEntity = await this.integrationRepository.create(query);
-
-      if (
-        !isMultiProviderConfigurationEnabled &&
-        command.active &&
-        ![ChannelTypeEnum.CHAT, ChannelTypeEnum.PUSH].includes(command.channel)
-      ) {
-        await this.deactivateSimilarChannelIntegrations.execute({
-          environmentId: command.environmentId,
-          organizationId: command.organizationId,
-          integrationId: integrationEntity._id,
-          channel: command.channel,
-          userId: command.userId,
-        });
-      }
 
       return integrationEntity;
     } catch (e) {

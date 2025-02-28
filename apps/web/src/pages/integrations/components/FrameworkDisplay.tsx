@@ -1,19 +1,14 @@
 import { Text, UnstyledButton, Group, useMantineTheme } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import { colors } from '@novu/notification-center';
-import {
-  AngularGradient,
-  Copy,
-  ReactGradient,
-  VueGradient,
-  JsGradient,
-  CodeGradient,
-} from '../../../design-system/icons';
-import { useEnvController } from '../../../hooks';
+import { AngularGradient, Copy, ReactGradient, VueGradient, JsGradient, CodeGradient } from '@novu/design-system';
+import { UTM_CAMPAIGN_QUERY_PARAM } from '@novu/shared';
+
+import { useEnvironment } from '../../../hooks';
 import { FrameworkEnum } from '../../quick-start/consts';
 
 export const FrameworkDisplay = ({ setFramework }: { setFramework: (framework: string) => void }) => {
-  const { environment } = useEnvController();
+  const { environment } = useEnvironment();
   const theme = useMantineTheme();
   const clipboardEnvironmentIdentifier = useClipboard({ timeout: 1000 });
   const environmentIdentifier = environment?.identifier ?? '';
@@ -89,7 +84,7 @@ export const FrameworkDisplay = ({ setFramework }: { setFramework: (framework: s
       </Group>
       <Group spacing={16} mt={16} grow>
         <a
-          href="https://docs.novu.co/notification-center/client/web-component"
+          href={`https://docs.novu.co/notification-center/client/web-component${UTM_CAMPAIGN_QUERY_PARAM}`}
           onClick={() => {
             setFramework('');
           }}
@@ -103,7 +98,7 @@ export const FrameworkDisplay = ({ setFramework }: { setFramework: (framework: s
           </Group>
         </a>
         <a
-          href="https://docs.novu.co/notification-center/client/headless/get-started"
+          href={`https://docs.novu.co/notification-center/client/headless/get-started${UTM_CAMPAIGN_QUERY_PARAM}`}
           onClick={() => {
             setFramework('');
           }}

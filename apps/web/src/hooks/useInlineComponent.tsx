@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-
 import { useDataRef } from './useDataRef';
 
 export const useInlineComponent: <T>(

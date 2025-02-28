@@ -1,27 +1,36 @@
-import styled from '@emotion/styled';
-import { ActionIcon, Group, Radio, Text, Input, useMantineTheme } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { ChannelTypeEnum, ICreateIntegrationBodyDto, NOVU_PROVIDERS, providers } from '@novu/shared';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Group, Radio, Text, Input, useMantineTheme } from '@mantine/core';
 import { useEffect, useMemo } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
+import styled from '@emotion/styled';
+import { useDisclosure } from '@mantine/hooks';
+import { ChannelTypeEnum, NOVU_PROVIDERS, providers } from '@novu/shared';
+import type { IResponseError, ICreateIntegrationBodyDto } from '@novu/shared';
+import {
+  ActionButton,
+  Button,
+  colors,
+  NameInput,
+  Sidebar,
+  ConditionPlus,
+  ArrowLeft,
+  Condition,
+  inputStyles,
+} from '@novu/design-system';
 
-import { createIntegration } from '../../../../api/integration';
-import { QueryKeys } from '../../../../api/query.keys';
+import { useEnvironment } from '../../../../hooks';
 import { useSegment } from '../../../../components/providers/SegmentProvider';
-import { Button, colors, NameInput, Sidebar } from '../../../../design-system';
-import { ConditionPlus, ArrowLeft, Condition } from '../../../../design-system/icons';
-import { inputStyles } from '../../../../design-system/config/inputs.styles';
-import { useFetchEnvironments } from '../../../../hooks/useFetchEnvironments';
-import { CHANNEL_TYPE_TO_STRING } from '../../../../utils/channels';
+import { createIntegration } from '../../../../api/integration';
+import { defaultIntegrationConditionsProps, IntegrationsStoreModalAnalytics } from '../../constants';
 import { errorMessage, successMessage } from '../../../../utils/notifications';
-import { IntegrationsStoreModalAnalytics } from '../../constants';
+import { QueryKeys } from '../../../../api/query.keys';
+import { ProviderImage } from './SelectProviderSidebar';
+import { CHANNEL_TYPE_TO_STRING } from '../../../../utils/channels';
 import type { IntegrationEntity } from '../../types';
 import { useProviders } from '../../useProviders';
 import { When } from '../../../../components/utils/When';
 import { Conditions, IConditions } from '../../../../components/conditions';
 import { ConditionIconButton } from '../ConditionIconButton';
-import { ProviderImage } from './SelectProviderSidebar';
 
 interface ICreateProviderInstanceForm {
   name: string;
@@ -45,9 +54,9 @@ export function CreateProviderInstanceSidebar({
   onIntegrationCreated: (id: string) => void;
 }) {
   const { colorScheme } = useMantineTheme();
-  const { environments, isLoading: areEnvironmentsLoading } = useFetchEnvironments();
+  const { environments, isLoaded } = useEnvironment();
   const { isLoading: areIntegrationsLoading, providers: integrations } = useProviders();
-  const isLoading = areEnvironmentsLoading || areIntegrationsLoading;
+  const isLoading = !isLoaded || areIntegrationsLoading;
   const queryClient = useQueryClient();
   const segment = useSegment();
   const [conditionsFormOpened, { close: closeConditionsForm, open: openConditionsForm }] = useDisclosure(false);
@@ -59,7 +68,7 @@ export function CreateProviderInstanceSidebar({
 
   const { mutateAsync: createIntegrationApi, isLoading: isLoadingCreate } = useMutation<
     IntegrationEntity,
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     ICreateIntegrationBodyDto
   >(createIntegration);
 
@@ -109,7 +118,7 @@ export function CreateProviderInstanceSidebar({
         channel: selectedChannel,
         name: data.name,
         credentials: {},
-        active: provider.channel === ChannelTypeEnum.IN_APP ? true : false,
+        active: true,
         check: false,
         conditions,
         _environmentId: environmentId,
@@ -121,7 +130,7 @@ export function CreateProviderInstanceSidebar({
         name: data.name,
         environmentId,
       });
-      successMessage('Instance configuration is created');
+      successMessage('Integration was created');
       onIntegrationCreated(integrationId ?? '');
 
       queryClient.refetchQueries({
@@ -148,6 +157,7 @@ export function CreateProviderInstanceSidebar({
   if (!provider) {
     return null;
   }
+
   const updateConditions = (conditions: IConditions[]) => {
     setValue('conditions', conditions, { shouldDirty: true });
   };
@@ -160,8 +170,9 @@ export function CreateProviderInstanceSidebar({
         conditions={conditions}
         name={name}
         isOpened={conditionsFormOpened}
-        setConditions={updateConditions}
+        updateConditions={updateConditions}
         onClose={closeConditionsForm}
+        {...defaultIntegrationConditionsProps}
       />
     );
   }
@@ -177,9 +188,17 @@ export function CreateProviderInstanceSidebar({
       onClose={onClose}
       customHeader={
         <Group spacing={12} w="100%" h={40} noWrap>
-          <ActionIcon onClick={onGoBack} variant={'transparent'} data-test-id="create-provider-instance-sidebar-back">
-            <ArrowLeft color={colors.B80} />
-          </ActionIcon>
+          <ActionButton
+            Icon={ArrowLeft}
+            onClick={onGoBack}
+            data-test-id="create-provider-instance-sidebar-back"
+            sx={{
+              '> svg': {
+                width: 16,
+                height: 16,
+              },
+            }}
+          />
           <ProviderImage providerId={provider?.id ?? ''} />
           <Controller
             control={control}
@@ -232,7 +251,7 @@ export function CreateProviderInstanceSidebar({
             <Radio.Group
               styles={inputStyles}
               sx={{
-                ['.mantine-Group-root']: {
+                '.mantine-Group-root': {
                   paddingTop: 0,
                   paddingLeft: '10px',
                 },

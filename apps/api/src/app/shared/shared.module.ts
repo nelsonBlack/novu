@@ -1,46 +1,79 @@
+/* eslint-disable global-require */
 import { Module } from '@nestjs/common';
 import {
+  ChangeRepository,
+  ControlValuesRepository,
   DalService,
-  UserRepository,
-  OrganizationRepository,
   EnvironmentRepository,
   ExecutionDetailsRepository,
-  NotificationTemplateRepository,
-  SubscriberRepository,
-  NotificationRepository,
-  MessageRepository,
-  NotificationGroupRepository,
-  MessageTemplateRepository,
-  MemberRepository,
-  LayoutRepository,
-  LogRepository,
-  IntegrationRepository,
-  ChangeRepository,
-  JobRepository,
   FeedRepository,
-  SubscriberPreferenceRepository,
+  IntegrationRepository,
+  JobRepository,
+  LayoutRepository,
+  MemberRepository,
+  MessageRepository,
+  MessageTemplateRepository,
+  NotificationGroupRepository,
+  NotificationRepository,
+  NotificationTemplateRepository,
+  OrganizationRepository,
+  PreferencesRepository,
+  SubscriberRepository,
+  TenantRepository,
   TopicRepository,
   TopicSubscribersRepository,
-  TenantRepository,
+  UserRepository,
+  WorkflowOverrideRepository,
+  CommunityUserRepository,
+  CommunityMemberRepository,
+  CommunityOrganizationRepository,
 } from '@novu/dal';
 import {
   analyticsService,
   cacheService,
   CacheServiceHealthIndicator,
-  CalculateDelayService,
+  ComputeJobWaitDurationService,
+  CreateExecutionDetails,
   createNestLoggingModuleOptions,
   DalServiceHealthIndicator,
   distributedLockService,
+  ExecuteBridgeRequest,
   featureFlagsService,
-  getIsMultiProviderConfigurationEnabled,
-  getIsTopicNotificationEnabled,
+  GetDecryptedSecretKey,
   InvalidateCacheService,
   LoggerModule,
   QueuesModule,
   storageService,
 } from '@novu/application-generic';
 
-import * as packageJson from '../../../package.json';
+import { isClerkEnabled, JobTopicNameEnum } from '@novu/shared';
+import { JwtModule } from '@nestjs/jwt';
+import packageJson from '../../../package.json';
+
+function getDynamicAuthProviders() {
+  if (isClerkEnabled()) {
+    const eeAuthPackage = require('@novu/ee-auth');
+
+    return eeAuthPackage.injectEEAuthProviders();
+  } else {
+    const userRepositoryProvider = {
+      provide: 'USER_REPOSITORY',
+      useClass: CommunityUserRepository,
+    };
+
+    const memberRepositoryProvider = {
+      provide: 'MEMBER_REPOSITORY',
+      useClass: CommunityMemberRepository,
+    };
+
+    const organizationRepositoryProvider = {
+      provide: 'ORGANIZATION_REPOSITORY',
+      useClass: CommunityOrganizationRepository,
+    };
+
+    return [userRepositoryProvider, memberRepositoryProvider, organizationRepositoryProvider];
+  }
+}
 
 const DAL_MODELS = [
   UserRepository,
@@ -55,22 +88,23 @@ const DAL_MODELS = [
   NotificationGroupRepository,
   MemberRepository,
   LayoutRepository,
-  LogRepository,
   IntegrationRepository,
   ChangeRepository,
   JobRepository,
   FeedRepository,
-  SubscriberPreferenceRepository,
   TopicRepository,
   TopicSubscribersRepository,
   TenantRepository,
+  WorkflowOverrideRepository,
+  ControlValuesRepository,
+  PreferencesRepository,
 ];
 
 const dalService = {
   provide: DalService,
   useFactory: async () => {
     const service = new DalService();
-    await service.connect(process.env.MONGO_URL);
+    await service.connect(process.env.MONGO_URL || '.');
 
     return service;
   },
@@ -80,28 +114,51 @@ const PROVIDERS = [
   analyticsService,
   cacheService,
   CacheServiceHealthIndicator,
-  CalculateDelayService,
+  ComputeJobWaitDurationService,
   dalService,
   DalServiceHealthIndicator,
   distributedLockService,
   featureFlagsService,
-  getIsMultiProviderConfigurationEnabled,
-  getIsTopicNotificationEnabled,
   InvalidateCacheService,
   storageService,
   ...DAL_MODELS,
+  CreateExecutionDetails,
+  ExecuteBridgeRequest,
+  GetDecryptedSecretKey,
 ];
 
+const IMPORTS = [
+  QueuesModule.forRoot([JobTopicNameEnum.WEB_SOCKETS, JobTopicNameEnum.WORKFLOW, JobTopicNameEnum.INBOUND_PARSE_MAIL]),
+  LoggerModule.forRoot(
+    createNestLoggingModuleOptions({
+      serviceName: packageJson.name,
+      version: packageJson.version,
+    })
+  ),
+];
+
+if (process.env.NODE_ENV === 'test') {
+  /**
+   * This is here only because of the tests. These providers are available at AppModule level,
+   * but since in tests we are often importing just the SharedModule and not the entire AppModule
+   * we need to make sure these providers are available.
+   *
+   * TODO: modify tests to either import all services they need explicitly, or remove repositories from SharedModule,
+   * and then import SharedModule + repositories explicitly.
+   */
+  PROVIDERS.push(...getDynamicAuthProviders());
+  IMPORTS.push(
+    JwtModule.register({
+      secret: `${process.env.JWT_SECRET}`,
+      signOptions: {
+        expiresIn: 360000,
+      },
+    })
+  );
+}
+
 @Module({
-  imports: [
-    LoggerModule.forRoot(
-      createNestLoggingModuleOptions({
-        serviceName: packageJson.name,
-        version: packageJson.version,
-      })
-    ),
-    QueuesModule,
-  ],
+  imports: [...IMPORTS],
   providers: [...PROVIDERS],
   exports: [...PROVIDERS, LoggerModule, QueuesModule],
 })

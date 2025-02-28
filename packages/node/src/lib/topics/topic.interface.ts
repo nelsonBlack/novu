@@ -11,7 +11,7 @@ export interface ITopics {
   getSubscriber(topicKey: TopicKey, externalSubscriberId: ExternalSubscriberId);
   checkSubscriber(
     topicKey: TopicKey,
-    externalSubscriberId: ExternalSubscriberId
+    externalSubscriberId: ExternalSubscriberId,
   );
   list(data: ITopicPaginationPayload);
   rename(topicKey: TopicKey, newName: TopicName);
@@ -19,8 +19,8 @@ export interface ITopics {
 }
 
 export interface ITopicPayload {
-  key?: TopicKey;
-  name?: TopicName;
+  key: TopicKey;
+  name: TopicName;
 }
 
 export interface ITopicPaginationPayload {

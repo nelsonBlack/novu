@@ -1,14 +1,21 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { UserRepository } from '@novu/dal';
-import { GetMyProfileCommand } from './get-my-profile.dto';
-import { createHash } from '../../../shared/helpers/hmac.service';
-@Injectable()
-export class GetMyProfileUsecase {
-  constructor(private readonly userRepository: UserRepository) {}
 
-  async execute(command: GetMyProfileCommand) {
+import { UserRepository } from '@novu/dal';
+import { createHash } from '@novu/application-generic';
+
+import { GetMyProfileCommand } from './get-my-profile.dto';
+import type { UserResponseDto } from '../../dtos/user-response.dto';
+import { BaseUserProfileUsecase } from '../base-user-profile.usecase';
+
+@Injectable()
+export class GetMyProfileUsecase extends BaseUserProfileUsecase {
+  constructor(private readonly userRepository: UserRepository) {
+    super();
+  }
+
+  async execute(command: GetMyProfileCommand): Promise<UserResponseDto> {
     Logger.verbose('Getting User from user repository in Command');
-    Logger.debug('Getting user data for ' + command.userId);
+    Logger.debug(`Getting user data for ${command.userId}`);
     const profile = await this.userRepository.findById(command.userId);
 
     if (!profile) {
@@ -37,6 +44,6 @@ export class GetMyProfileUsecase {
 
     Logger.verbose('Found User');
 
-    return profile;
+    return this.mapToDto(profile);
   }
 }

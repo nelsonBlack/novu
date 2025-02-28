@@ -1,5 +1,4 @@
-import * as mongoose from 'mongoose';
-import { Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 import { schemaOptions } from '../schema-default.options';
 import { ChangeDBModel } from './change.entity';
@@ -23,7 +22,7 @@ const changeSchema = new Schema<ChangeDBModel>(
       type: Schema.Types.ObjectId,
       ref: 'Organization',
     },
-    _entityId: Schema.Types.ObjectId,
+    _entityId: { type: Schema.Types.ObjectId, index: true },
     _creatorId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -44,6 +43,17 @@ changeSchema.virtual('user', {
   justOne: true,
 });
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
+changeSchema.index({
+  _environmentId: 1,
+});
+
+changeSchema.index({
+  _creatorId: 1,
+});
+
+changeSchema.index({
+  _entityId: 1,
+});
+
 export const Change =
   (mongoose.models.Change as mongoose.Model<ChangeDBModel>) || mongoose.model<ChangeDBModel>('Change', changeSchema);

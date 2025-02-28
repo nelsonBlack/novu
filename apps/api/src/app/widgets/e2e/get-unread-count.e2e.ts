@@ -3,8 +3,10 @@ import { expect } from 'chai';
 import { MessageRepository, NotificationTemplateEntity, SubscriberRepository } from '@novu/dal';
 import { UserSession } from '@novu/testing';
 import { ChannelTypeEnum } from '@novu/shared';
+import { Novu } from '@novu/api';
+import { initNovuClassSdk } from '../../shared/helpers/e2e/sdk/e2e-sdk.helper';
 
-describe('Unread Count - GET /widget/notifications/unread', function () {
+describe('Unread Count - GET /widget/notifications/unread #novu-v1', function () {
   const messageRepository = new MessageRepository();
   let session: UserSession;
   let template: NotificationTemplateEntity;
@@ -13,11 +15,12 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
   let subscriberProfile: {
     _id: string;
   } | null = null;
-
+  let novuClient: Novu;
   beforeEach(async () => {
     session = new UserSession();
     await session.initialize();
     subscriberId = SubscriberRepository.createObjectId();
+    novuClient = initNovuClassSdk(session);
 
     template = await session.createTemplate({
       noFeedId: true,
@@ -41,11 +44,11 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
   });
 
   it('should return unread count with no query', async function () {
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
 
-    await session.awaitRunningJobs(template._id);
+    await session.waitForJobCompletion(template._id);
 
     const messages = await messageRepository.findBySubscriberChannel(
       session.environment._id,
@@ -56,7 +59,7 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
     expect(messages[0].read).to.equal(false);
 
     await axios.post(
-      `http://localhost:${process.env.PORT}/v1/widgets/messages/markAs`,
+      `http://127.0.0.1:${process.env.PORT}/v1/widgets/messages/markAs`,
       { messageId, mark: { read: true } },
       {
         headers: {
@@ -70,11 +73,11 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
   });
 
   it('should return unread count with query read false', async function () {
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
 
-    await session.awaitRunningJobs(template._id);
+    await session.waitForJobCompletion(template._id);
 
     const messages = await messageRepository.findBySubscriberChannel(
       session.environment._id,
@@ -85,7 +88,7 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
     expect(messages[0].read).to.equal(false);
 
     await axios.post(
-      `http://localhost:${process.env.PORT}/v1/widgets/messages/markAs`,
+      `http://127.0.0.1:${process.env.PORT}/v1/widgets/messages/markAs`,
       { messageId, mark: { read: true } },
       {
         headers: {
@@ -99,11 +102,11 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
   });
 
   it('should return unread count with query read true', async function () {
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
-    await session.triggerEvent(template.triggers[0].identifier, subscriberId);
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
+    await novuClient.trigger({ workflowId: template.triggers[0].identifier, to: subscriberId });
 
-    await session.awaitRunningJobs(template._id);
+    await session.waitForJobCompletion(template._id);
 
     const messages = await messageRepository.findBySubscriberChannel(
       session.environment._id,
@@ -114,7 +117,7 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
     expect(messages[0].read).to.equal(false);
 
     await axios.post(
-      `http://localhost:${process.env.PORT}/v1/widgets/messages/markAs`,
+      `http://127.0.0.1:${process.env.PORT}/v1/widgets/messages/markAs`,
       { messageId, mark: { read: true } },
       {
         headers: {
@@ -128,7 +131,7 @@ describe('Unread Count - GET /widget/notifications/unread', function () {
   });
 
   async function getUnreadCount(query = {}) {
-    const response = await axios.get(`http://localhost:${process.env.PORT}/v1/widgets/notifications/unread`, {
+    const response = await axios.get(`http://127.0.0.1:${process.env.PORT}/v1/widgets/notifications/unread`, {
       params: {
         ...query,
       },

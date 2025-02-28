@@ -1,14 +1,12 @@
-import { Inject, Injectable, NotFoundException, Scope } from '@nestjs/common';
-import { OrganizationRepository, UserRepository, MemberRepository, IAddMemberData } from '@novu/dal';
-import { MemberStatusEnum } from '@novu/shared';
-import { Novu } from '@novu/node';
+import { Injectable, NotFoundException, Scope } from '@nestjs/common';
+import { IAddMemberData, MemberRepository, OrganizationRepository, UserRepository } from '@novu/dal';
+import { MemberRoleEnum, MemberStatusEnum } from '@novu/shared';
 import { AnalyticsService } from '@novu/application-generic';
 
+import { Novu } from '@novu/api';
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { InviteMemberCommand } from './invite-member.command';
 import { capitalize, createGuid } from '../../../shared/services/helper/helper.service';
-
-import { normalizeEmail } from '../../../shared/helpers/email-normalization.service';
 
 @Injectable({
   scope: Scope.REQUEST,
@@ -35,14 +33,15 @@ export class InviteMember {
     const token = createGuid();
 
     if (process.env.NOVU_API_KEY && (process.env.NODE_ENV === 'dev' || process.env.NODE_ENV === 'production')) {
-      const novu = new Novu(process.env.NOVU_API_KEY);
-
-      // cspell:disable-next
-      await novu.trigger(process.env.NOVU_TEMPLATEID_INVITE_TO_ORGANISATION || 'invite-to-organization-wBnO8NpDn', {
-        to: {
-          subscriberId: command.email,
-          email: command.email,
-        },
+      const novu = new Novu({ security: { secretKey: process.env.NOVU_API_KEY } });
+      await novu.trigger({
+        workflowId: process.env.NOVU_TEMPLATEID_INVITE_TO_ORGANISATION || 'invite-to-organization-wBnO8NpDn',
+        to: [
+          {
+            subscriberId: command.email,
+            email: command.email,
+          },
+        ],
         payload: {
           email: command.email,
           inviteeName: capitalize(command.email.split('@')[0]),
@@ -54,7 +53,7 @@ export class InviteMember {
     }
 
     const memberPayload: IAddMemberData = {
-      roles: [command.role],
+      roles: [command.role as MemberRoleEnum],
       memberStatus: MemberStatusEnum.INVITED,
       invite: {
         token,
@@ -64,11 +63,12 @@ export class InviteMember {
       },
     };
 
+    await this.memberRepository.addMember(organization._id, memberPayload);
+
     this.analyticsService.track('Invite Organization Member', command.userId, {
       _organization: command.organizationId,
       role: command.role,
+      email: command.email,
     });
-
-    await this.memberRepository.addMember(organization._id, memberPayload);
   }
 }

@@ -1,13 +1,19 @@
 import { Handle, Position } from 'react-flow-renderer';
-
-import { Button, colors, shadows, Text, Title } from '../../../design-system';
-
+import { BoltOutlinedGradient, Button, colors, Playground, shadows, Text, Title } from '@novu/design-system';
 import styled from '@emotion/styled';
 import { createStyles, Group, Popover, Stack, useMantineColorScheme } from '@mantine/core';
-import { ActorTypeEnum, INotificationTemplate, StepTypeEnum, SystemAvatarIconEnum } from '@novu/shared';
+import type { INotificationTemplate, IResponseError } from '@novu/shared';
+import {
+  ActorTypeEnum,
+  ICreateNotificationTemplateDto,
+  StepTypeEnum,
+  SystemAvatarIconEnum,
+  WorkflowCreationSourceEnum,
+} from '@novu/shared';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+
 import { createTemplate, testTrigger } from '../../../api/notification-templates';
 import { useEffectOnce, useNotificationGroup, useTemplates } from '../../../hooks';
 import {
@@ -18,8 +24,7 @@ import {
 import { NodeStep } from '../../workflow';
 import { useSegment } from '../../providers/SegmentProvider';
 import { errorMessage } from '../../../utils/notifications';
-import { BoltOutlinedGradient, Playground } from '../../../design-system/icons';
-import { TemplateCreationSourceEnum } from '../../../pages/templates/shared';
+import { FIRST_100_WORKFLOWS } from '../../../constants/workflowConstants';
 
 const useStyles = createStyles((theme) => ({
   dropdown: {
@@ -58,7 +63,7 @@ export function TriggerNode({ data }: { data: { label: string; email?: string } 
 
 function TriggerButton({ setOpened }: { setOpened: (value: boolean) => void }) {
   const [notificationNumber, setNotificationNumber] = useState(1);
-  const { templates = [], loading: templatesLoading } = useTemplates();
+  const { templates = [], loading: templatesLoading } = useTemplates(FIRST_100_WORKFLOWS);
 
   const segment = useSegment();
 
@@ -66,7 +71,7 @@ function TriggerButton({ setOpened }: { setOpened: (value: boolean) => void }) {
 
   const { mutate: createNotificationTemplate, isLoading: createTemplateLoading } = useMutation<
     INotificationTemplate & { __source?: string },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     { template: ICreateNotificationTemplateDto; params: { __source?: string } }
   >((data) => createTemplate(data.template, data.params), {
     onError: (error) => {
@@ -101,7 +106,7 @@ function TriggerButton({ setOpened }: { setOpened: (value: boolean) => void }) {
 
     createNotificationTemplate({
       template: payloadToCreate as unknown as ICreateNotificationTemplateDto,
-      params: { __source: TemplateCreationSourceEnum.ONBOARDING_IN_APP },
+      params: { __source: WorkflowCreationSourceEnum.ONBOARDING_IN_APP },
     });
   }, hasToCreateOnboardingTemplate);
 

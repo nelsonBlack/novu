@@ -1,35 +1,26 @@
-import { DynamicModule, HttpException, Module, Logger, Provider } from '@nestjs/common';
-import { RavenInterceptor, RavenModule } from 'nest-raven';
-import { APP_INTERCEPTOR } from '@nestjs/core';
-import { Type } from '@nestjs/common/interfaces/type.interface';
-import { ForwardReference } from '@nestjs/common/interfaces/modules/forward-reference.interface';
+import { DynamicModule, ForwardReference, Logger, Module, Provider, Type } from '@nestjs/common';
 
+import { APP_FILTER } from '@nestjs/core';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { SharedModule } from './app/shared/shared.module';
 import { HealthModule } from './app/health/health.module';
 import { WorkflowModule } from './app/workflow/workflow.module';
+import { TelemetryModule } from './app/telemetry/telemetry.module';
 
 const modules: Array<Type | DynamicModule | Promise<DynamicModule> | ForwardReference> = [
   SharedModule,
   HealthModule,
   WorkflowModule,
+  TelemetryModule,
 ];
 
 const providers: Provider[] = [];
 
 if (process.env.SENTRY_DSN) {
-  modules.push(RavenModule);
-  providers.push({
-    provide: APP_INTERCEPTOR,
-    useValue: new RavenInterceptor({
-      filters: [
-        /*
-         * Filter exceptions to type HttpException. Ignore those that
-         * have status code of less than 500
-         */
-        { type: HttpException, filter: (exception: HttpException) => exception.getStatus() < 500 },
-      ],
-      user: ['_id', 'firstName', 'organizationId', 'environmentId', 'roles', 'domain'],
-    }),
+  modules.unshift(SentryModule.forRoot());
+  providers.unshift({
+    provide: APP_FILTER,
+    useClass: SentryGlobalFilter,
   });
 }
 

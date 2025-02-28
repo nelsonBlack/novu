@@ -1,8 +1,7 @@
 import { format } from 'date-fns';
 
 import { ITenantEntity } from '@novu/shared';
-
-import { IExtendedColumn, Tooltip, withCellLoading, Text } from '../../../../design-system';
+import { IExtendedColumn, Tooltip, withCellLoading, Text } from '@novu/design-system';
 
 const maxWidth = 60;
 
@@ -32,7 +31,7 @@ export const columns: IExtendedColumn<ITenantEntity>[] = [
   {
     accessor: 'createdAt',
     Header: 'Created at',
-    maxWidth: maxWidth,
+    maxWidth,
     Cell: withCellLoading(({ row: { original } }) => {
       return format(new Date(original.createdAt), 'dd/MM/yyyy HH:mm');
     }),
@@ -40,7 +39,7 @@ export const columns: IExtendedColumn<ITenantEntity>[] = [
   {
     accessor: 'updatedAt',
     Header: 'Updated at',
-    maxWidth: maxWidth,
+    maxWidth,
     Cell: withCellLoading(({ row: { original } }) => {
       return format(new Date(original.updatedAt), 'dd/MM/yyyy HH:mm');
     }),

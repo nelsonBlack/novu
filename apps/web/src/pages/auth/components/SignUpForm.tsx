@@ -1,22 +1,22 @@
-import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import styled from '@emotion/styled';
-import { Divider, Button as MantineButton, Center } from '@mantine/core';
-import { showNotification } from '@mantine/notifications';
-import { passwordConstraints } from '@novu/shared';
+import { Center } from '@mantine/core';
+import { passwordConstraints, UTM_CAMPAIGN_QUERY_PARAM } from '@novu/shared';
+import type { IResponseError } from '@novu/shared';
+import { PasswordInput, Button, colors, Input, Text, Checkbox } from '@novu/design-system';
 
-import { useAuthContext } from '../../../components/providers/AuthProvider';
+import { useAuth } from '../../../hooks/useAuth';
 import { api } from '../../../api/api.client';
-import { PasswordInput, Button, colors, Input, Text, Checkbox } from '../../../design-system';
-import { GitHub } from '../../../design-system/icons';
-import { IS_DOCKER_HOSTED } from '../../../config';
-import { applyToken, useVercelParams } from '../../../hooks';
+import { useRedirectURL, useVercelParams } from '../../../hooks';
 import { useAcceptInvite } from './useAcceptInvite';
 import { PasswordRequirementPopover } from './PasswordRequirementPopover';
-import { buildGithubLink, buildVercelGithubLink } from './gitHubUtils';
-import { ROUTES } from '../../../constants/routes.enum';
+import { ROUTES } from '../../../constants/routes';
+import { OAuth } from './OAuth';
+import { useSegment } from '../../../components/providers/SegmentProvider';
+import { useStudioState } from '../../../studio/hooks';
+import { navigateToAuthApplication } from '../../../utils';
 
 type SignUpFormProps = {
   invitationToken?: string;
@@ -31,63 +31,64 @@ export type SignUpFormInputType = {
 
 export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
   const navigate = useNavigate();
+  const { setRedirectURL } = useRedirectURL();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setRedirectURL(), []);
+  const location = useLocation();
 
-  const { setToken } = useAuthContext();
-  const { isLoading: loadingAcceptInvite, submitToken } = useAcceptInvite();
-  const { isFromVercel, code, next, configurationId } = useVercelParams();
-  const vercelQueryParams = `code=${code}&next=${next}&configurationId=${configurationId}`;
-  const loginLink = isFromVercel ? `/auth/login?${vercelQueryParams}` : ROUTES.AUTH_LOGIN;
-  const githubLink = isFromVercel
-    ? buildVercelGithubLink({ code, next, configurationId })
-    : buildGithubLink({ invitationToken });
+  const { login } = useAuth();
+  const { isLoading: isAcceptInviteLoading, acceptInvite } = useAcceptInvite();
+  const { params, isFromVercel } = useVercelParams();
+  const loginLink = isFromVercel ? `${ROUTES.AUTH_LOGIN}?${params.toString()}` : ROUTES.AUTH_LOGIN;
+  const segment = useSegment();
+  const state = useStudioState();
 
   const { isLoading, mutateAsync, isError, error } = useMutation<
     { token: string },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     {
       firstName: string;
       lastName: string;
       email: string;
       password: string;
+      invitationToken?: string;
     }
   >((data) => api.post('/v1/auth/register', data));
 
   const onSubmit = async (data) => {
+    const parsedSearchParams = new URLSearchParams(location.search);
+    const origin = parsedSearchParams.get('origin');
+    const anonymousId = parsedSearchParams.get('anonymous_id');
+
+    // eslint-disable-next-line no-unsafe-optional-chaining
+    const [firstName, lastName] = data?.fullName.trim().split(' ');
     const itemData = {
-      firstName: data.fullName.split(' ')[0],
-      lastName: data.fullName.split(' ')[1],
+      firstName,
+      lastName,
       email: data.email,
       password: data.password,
+      origin,
+      invitationToken,
     };
 
-    if (!itemData.lastName) {
-      showNotification({
-        message: 'Please write your full name including last name',
-        color: 'red',
-      });
-
-      return;
-    }
     const response = await mutateAsync(itemData);
+    const { token } = response as any;
+    await login(token);
 
-    /**
-     * We need to call the applyToken to avoid a race condition for accept invite
-     * To get the correct token when sending the request
-     */
-    const token = (response as any).token;
-    applyToken(token);
+    if (state?.anonymousId && anonymousId) {
+      segment.alias(anonymousId, (response as any).user?.id);
+    }
 
     if (invitationToken) {
-      submitToken(token, invitationToken);
-
-      return true;
+      const updatedToken = await acceptInvite(invitationToken);
+      if (updatedToken) {
+        await login(updatedToken);
+      }
+      navigateToAuthApplication();
     } else {
-      setToken(token);
+      const navigateParams = isFromVercel ? `?${params.toString()}` : '';
+      navigateToAuthApplication(navigateParams);
     }
-
-    navigate(isFromVercel ? `/auth/application?${vercelQueryParams}` : ROUTES.AUTH_APPLICATION);
-
-    return true;
   };
 
   const {
@@ -125,24 +126,7 @@ export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
 
   return (
     <>
-      {!IS_DOCKER_HOSTED && (
-        <>
-          <GitHubButton
-            my={30}
-            component="a"
-            href={githubLink}
-            variant="white"
-            fullWidth
-            radius="md"
-            leftIcon={<GitHub />}
-            sx={{ color: colors.B40, fontSize: '16px', fontWeight: 700, height: '50px' }}
-            data-test-id="github-button"
-          >
-            Sign Up with GitHub
-          </GitHubButton>
-          <Divider label={<Text color={colors.B40}>Or</Text>} color={colors.B30} labelPosition="center" my="md" />
-        </>
-      )}
+      <OAuth invitationToken={invitationToken} />
       <form noValidate name="login-form" onSubmit={handleSubmit(onSubmit)}>
         <Input
           error={errors.fullName?.message}
@@ -194,7 +178,7 @@ export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
           />
         </PasswordRequirementPopover>
         <Checkbox
-          onChange={(prev) => setAccepted(prev.target.checked)}
+          onChange={() => setAccepted(!accepted)}
           required
           label={<Accept />}
           data-test-id="accept-cb"
@@ -212,7 +196,7 @@ export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
           disabled={!accepted}
           mt={20}
           inherit
-          loading={isLoading || loadingAcceptInvite}
+          loading={isLoading || isAcceptInviteLoading}
           submit
           data-test-id="submitButton"
         >
@@ -241,13 +225,18 @@ function Accept() {
   return (
     <>
       <span>I accept the </span>
-      <a style={{ textDecoration: 'underline' }} href="https://novu.co/terms" target="_blank" rel="noopener noreferrer">
+      <a
+        style={{ textDecoration: 'underline' }}
+        href={`https://novu.co/terms${UTM_CAMPAIGN_QUERY_PARAM}`}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         Terms and Conditions
       </a>
       <span> and have read the </span>
       <a
         style={{ textDecoration: 'underline' }}
-        href="https://novu.co/privacy"
+        href={`https://novu.co/privacy${UTM_CAMPAIGN_QUERY_PARAM}`}
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -256,18 +245,3 @@ function Accept() {
     </>
   );
 }
-
-const GitHubButton = styled(MantineButton)<{
-  component: 'a';
-  my: number;
-  href: string;
-  variant: 'white';
-  fullWidth: boolean;
-  radius: 'md';
-  leftIcon: any;
-  sx: any;
-}>`
-  :hover {
-    color: ${colors.B40};
-  }
-`;

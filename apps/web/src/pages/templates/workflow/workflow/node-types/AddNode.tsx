@@ -2,8 +2,19 @@ import { memo } from 'react';
 import { ActionIcon, useMantineTheme } from '@mantine/core';
 import styled from '@emotion/styled';
 
-import { Digest, Mail, Mobile, PlusCircleOutlined, Chat, Sms, InApp, Timer } from '../../../../../design-system/icons';
-import { colors, Dropdown, Text } from '../../../../../design-system';
+import {
+  Digest,
+  Mail,
+  Mobile,
+  PlusCircleOutlined,
+  Chat,
+  Sms,
+  InApp,
+  Timer,
+  colors,
+  Dropdown,
+  Text,
+} from '@novu/design-system';
 import { StepTypeEnum } from '@novu/shared';
 
 interface NodeData {
@@ -41,6 +52,7 @@ export default memo(({ data }: { data: NodeData }) => {
               },
               zIndex: 9999,
               pointerEvents: 'all',
+              // eslint-disable-next-line no-nested-ternary
               color: theme.colorScheme === 'dark' ? (data.showDropZone ? colors.white : colors.B60) : colors.B60,
               '&:hover': {
                 color: theme.colorScheme === 'dark' ? colors.white : colors.B40,
@@ -48,7 +60,7 @@ export default memo(({ data }: { data: NodeData }) => {
             }}
             variant="transparent"
           >
-            <PlusCircleOutlined />
+            <PlusCircleOutlined fillColor={theme.colorScheme === 'dark' ? colors.B15 : 'transparent'} />
           </ActionIcon>
         }
       >

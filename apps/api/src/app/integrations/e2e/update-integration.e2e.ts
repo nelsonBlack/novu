@@ -1,30 +1,26 @@
-import { EnvironmentRepository, IntegrationRepository } from '@novu/dal';
+import { CommunityOrganizationRepository, EnvironmentRepository, IntegrationRepository } from '@novu/dal';
 import { UserSession } from '@novu/testing';
 import { expect } from 'chai';
 import {
+  ApiServiceLevelEnum,
   ChannelTypeEnum,
   ChatProviderIdEnum,
   EmailProviderIdEnum,
+  FieldOperatorEnum,
   InAppProviderIdEnum,
   ITenantFilterPart,
   PushProviderIdEnum,
 } from '@novu/shared';
 
-const ORIGINAL_IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED;
-
-describe('Update Integration - /integrations/:integrationId (PUT)', function () {
+describe('Update Integration - /integrations/:integrationId (PUT) #novu-v2', function () {
   let session: UserSession;
   const integrationRepository = new IntegrationRepository();
   const envRepository = new EnvironmentRepository();
+  const communityOrganizationRepository = new CommunityOrganizationRepository();
 
   beforeEach(async () => {
     session = new UserSession();
     await session.initialize();
-    process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = 'true';
-  });
-
-  afterEach(async () => {
-    process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = ORIGINAL_IS_MULTI_PROVIDER_CONFIGURATION_ENABLED;
   });
 
   it('should throw not found exception when integration is not found', async function () {
@@ -61,7 +57,9 @@ describe('Update Integration - /integrations/:integrationId (PUT)', function () 
     // update integration
     await session.testAgent.put(`/v1/integrations/${integrationId}`).send(payload);
 
-    const integration = (await session.testAgent.get(`/v1/integrations`)).body.data[0];
+    const integration = (await session.testAgent.get(`/v1/integrations`)).body.data.find(
+      (fetchedIntegration) => fetchedIntegration._id === integrationId
+    );
 
     expect(integration.credentials.apiKey).to.equal(payload.credentials.apiKey);
     expect(integration.credentials.secretKey).to.equal(payload.credentials.secretKey);
@@ -76,12 +74,12 @@ describe('Update Integration - /integrations/:integrationId (PUT)', function () 
       check: false,
       conditions: [
         {
-          children: [{ field: 'identifier', value: 'test', operator: 'EQUAL', on: 'tenant' }],
+          children: [{ field: 'identifier', value: 'test', operator: FieldOperatorEnum.EQUAL, on: 'tenant' }],
         },
       ],
     };
 
-    const data = (await session.testAgent.get(`/v1/integrations`)).body.data;
+    const { data } = (await session.testAgent.get(`/v1/integrations`)).body;
 
     const integration = data.find((i) => i.primary && i.channel === 'email');
 
@@ -117,7 +115,7 @@ describe('Update Integration - /integrations/:integrationId (PUT)', function () 
       ],
     };
 
-    const data = (await session.testAgent.get(`/v1/integrations`)).body.data;
+    const { data } = (await session.testAgent.get(`/v1/integrations`)).body;
 
     const integration = data.find((i) => i.primary && i.channel === 'email');
 
@@ -965,5 +963,86 @@ describe('Update Integration - /integrations/:integrationId (PUT)', function () 
     expect(second.primary).to.equal(false);
     expect(second.active).to.equal(true);
     expect(second.priority).to.equal(1);
+  });
+
+  it('should update removeNovuBranding when organization is not on free tier', async function () {
+    await integrationRepository.deleteMany({
+      _organizationId: session.organization._id,
+      _environmentId: session.environment._id,
+    });
+
+    await communityOrganizationRepository.update(
+      { _id: session.organization._id },
+      { $set: { apiServiceLevel: ApiServiceLevelEnum.BUSINESS } }
+    );
+
+    const inAppIntegration = await integrationRepository.create({
+      name: 'Novu In-App',
+      identifier: 'identifier1',
+      providerId: InAppProviderIdEnum.Novu,
+      channel: ChannelTypeEnum.IN_APP,
+      active: false,
+      _organizationId: session.organization._id,
+      _environmentId: session.environment._id,
+    });
+
+    const payload = {
+      removeNovuBranding: true,
+      check: false,
+    };
+
+    const {
+      body: { data },
+    } = await session.testAgent.put(`/v1/integrations/${inAppIntegration._id}`).send(payload);
+
+    expect(data.removeNovuBranding).to.equal(true);
+
+    const updatedIntegration = await integrationRepository.findOne({
+      _id: inAppIntegration._id,
+      _organizationId: session.organization._id,
+    });
+
+    expect(updatedIntegration?.removeNovuBranding).to.equal(true);
+  });
+
+  it('should not update removeNovuBranding when organization is on free tier', async function () {
+    await integrationRepository.deleteMany({
+      _organizationId: session.organization._id,
+      _environmentId: session.environment._id,
+    });
+
+    await communityOrganizationRepository.update(
+      { _id: session.organization._id },
+      { $set: { apiServiceLevel: ApiServiceLevelEnum.FREE } }
+    );
+
+    const inAppIntegration = await integrationRepository.create({
+      name: 'Novu In-App',
+      identifier: 'identifier1',
+      providerId: InAppProviderIdEnum.Novu,
+      channel: ChannelTypeEnum.IN_APP,
+      active: false,
+      _organizationId: session.organization._id,
+      _environmentId: session.environment._id,
+    });
+
+    const payload = {
+      removeNovuBranding: true,
+      check: false,
+      active: true,
+    };
+
+    const {
+      body: { data },
+    } = await session.testAgent.put(`/v1/integrations/${inAppIntegration._id}`).send(payload);
+
+    expect(data.removeNovuBranding).to.be.undefined;
+
+    const updatedIntegration = await integrationRepository.findOne({
+      _id: inAppIntegration._id,
+      _organizationId: session.organization._id,
+    });
+
+    expect(updatedIntegration?.removeNovuBranding).to.be.undefined;
   });
 });

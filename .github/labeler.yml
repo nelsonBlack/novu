@@ -1,9 +1,11 @@
-'@novu/api':
+'@novu/api-service':
   - apps/api/**/*
 '@novu/worker':
   - apps/worker/**/*
 '@novu/web':
   - apps/web/**/*
+'@novu/dashboard':
+  - apps/dashboard/**/*
 '@novu/ws':
   - apps/ws/**/*
 '@novu/inbound-mail':
@@ -12,8 +14,12 @@
   - apps/webhook/**/*
 '@novu/dal':
   - libs/dal/**/*
+'@novu/design-system':
+  - libs/design-system/**/*
+'@novu/novui':
+  - libs/novui/**/*
 '@novu/shared':
-  - libs/shared/**/*
+  - packages/shared/**/*
 '@novu/notification-center':
   - packages/notification-center/**/*
 '@novu/notification-center-vue':
@@ -24,10 +30,6 @@
   - providers/**/*
 'CI/CD':
   - .github/**/*
-'helm':
-  - docker/kubernetes/helm/**/*
-'kustomize':
-  - docker/kubernetes/kustomize/**/*
 'docker':
   - docker/**/*
 'scripts':

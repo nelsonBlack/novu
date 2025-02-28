@@ -1,35 +1,28 @@
-import * as mongoose from 'mongoose';
-import { Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 import { schemaOptions } from '../schema-default.options';
 import { NotificationDBModel } from './notification.entity';
-import { getTTLOptions } from '../../shared';
 
 const notificationSchema = new Schema<NotificationDBModel>(
   {
     _templateId: {
       type: Schema.Types.ObjectId,
       ref: 'NotificationTemplate',
-      index: true,
     },
     _environmentId: {
       type: Schema.Types.ObjectId,
       ref: 'Environment',
-      index: true,
     },
     _organizationId: {
       type: Schema.Types.ObjectId,
       ref: 'Organization',
-      index: true,
     },
     _subscriberId: {
       type: Schema.Types.ObjectId,
       ref: 'Subscriber',
-      index: true,
     },
     transactionId: {
       type: Schema.Types.String,
-      index: true,
     },
     channels: [
       {
@@ -45,12 +38,15 @@ const notificationSchema = new Schema<NotificationDBModel>(
     payload: {
       type: Schema.Types.Mixed,
     },
-    expireAt: Schema.Types.Date,
+    controls: {
+      type: Schema.Types.Mixed,
+    },
+    tags: {
+      type: [Schema.Types.String],
+    },
   },
   schemaOptions
 );
-
-notificationSchema.index({ expireAt: 1 }, getTTLOptions());
 
 notificationSchema.virtual('environment', {
   ref: 'Environment',
@@ -140,13 +136,29 @@ notificationSchema.index({
  *           _environmentId: this.convertStringToObjectId(environmentId),
  *           createdAt: {$gte: monthBefore}
  *           weekly: { $sum: { $cond: [{ $gte: ['$createdAt', weekBefore] }, 1, 0] } },
+ *
+ *
+ * Path: ./get-platform-notification-usage.usecase.ts
+ *    Context: execute()
+ *        Query: organizationRepository.aggregate(
+ *                $lookup:
+ *        {
+ *          from: 'notifications',
+ *          localField: 'environments._id',
+ *          foreignField: '_environmentId',
+ *          as: 'notifications',
+ *        }
  */
 notificationSchema.index({
   _environmentId: 1,
   createdAt: -1,
 });
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
+/*
+ * This index was created to push entries to Online Archive
+ */
+notificationSchema.index({ createdAt: 1 });
+
 export const Notification =
   (mongoose.models.Notification as mongoose.Model<NotificationDBModel>) ||
   mongoose.model<NotificationDBModel>('Notification', notificationSchema);

@@ -1,5 +1,14 @@
 import { faker } from '@faker-js/faker';
-import { ChannelCTATypeEnum, ChannelTypeEnum } from '@novu/shared';
+import {
+  buildWorkflowPreferencesFromPreferenceChannels,
+  ChannelCTATypeEnum,
+  DEFAULT_WORKFLOW_PREFERENCES,
+  EmailBlockTypeEnum,
+  PreferencesTypeEnum,
+  StepTypeEnum,
+  TemplateVariableTypeEnum,
+  IWorkflowStepMetadata,
+} from '@novu/shared';
 import {
   MessageTemplateRepository,
   NotificationGroupRepository,
@@ -8,15 +17,23 @@ import {
   NotificationTemplateRepository,
   FeedRepository,
   LayoutRepository,
+  PreferencesRepository,
 } from '@novu/dal';
+import { v4 as uuid } from 'uuid';
+
 import { CreateTemplatePayload } from './create-notification-template.interface';
 
 export class NotificationTemplateService {
-  constructor(private userId: string, private organizationId: string, private environmentId: string) {}
+  constructor(
+    private userId: string,
+    private organizationId: string,
+    private environmentId: string
+  ) {}
 
   private notificationTemplateRepository = new NotificationTemplateRepository();
   private notificationGroupRepository = new NotificationGroupRepository();
   private messageTemplateRepository = new MessageTemplateRepository();
+  private preferenceRepository = new PreferencesRepository();
   private feedRepository = new FeedRepository();
   private layoutRepository = new LayoutRepository();
 
@@ -31,10 +48,9 @@ export class NotificationTemplateService {
       _environmentId: this.environmentId,
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const steps: any[] = override?.steps ?? [
+    const steps: CreateTemplatePayload['steps'] = override?.steps ?? [
       {
-        type: ChannelTypeEnum.IN_APP,
+        type: StepTypeEnum.IN_APP,
         content: 'Test content for <b>{{firstName}}</b>',
         cta: {
           type: ChannelCTATypeEnum.REDIRECT,
@@ -47,20 +63,20 @@ export class NotificationTemplateService {
             defaultValue: '',
             name: 'firstName',
             required: false,
-            type: 'String',
+            type: TemplateVariableTypeEnum.STRING,
           },
         ],
       },
       {
-        type: ChannelTypeEnum.EMAIL,
+        type: StepTypeEnum.EMAIL,
         subject: 'Password reset',
         content: [
           {
-            type: 'text',
+            type: EmailBlockTypeEnum.TEXT,
             content: 'This are the text contents of the template for {{firstName}}',
           },
           {
-            type: 'button',
+            type: EmailBlockTypeEnum.BUTTON,
             content: 'SIGN UP',
             url: 'https://url-of-app.com/{{urlVariable}}',
           },
@@ -70,7 +86,7 @@ export class NotificationTemplateService {
             defaultValue: '',
             name: 'firstName',
             required: false,
-            type: 'String',
+            type: TemplateVariableTypeEnum.STRING,
           },
         ],
       },
@@ -79,7 +95,7 @@ export class NotificationTemplateService {
     const templateSteps: NotificationStepEntity[] = [];
 
     for (const message of steps) {
-      const saved = await this.messageTemplateRepository.create({
+      const savedMessageTemplate = await this.messageTemplateRepository.create({
         type: message.type,
         cta: message.cta,
         variables: message.variables,
@@ -87,6 +103,8 @@ export class NotificationTemplateService {
         subject: message.subject,
         title: message.title,
         name: message.name,
+        preheader: message.preheader,
+        actor: message.actor,
         _feedId: override.noFeedId ? undefined : feeds[0]._id,
         _layoutId: override.noLayoutId ? undefined : layouts[0]._id,
         _creatorId: this.userId,
@@ -94,14 +112,49 @@ export class NotificationTemplateService {
         _environmentId: this.environmentId,
       });
 
-      if (saved?._id) {
+      const variantSteps: NotificationStepEntity[] = [];
+
+      if (message.variants?.length) {
+        for (const variant of message.variants) {
+          const savedVariant = await this.messageTemplateRepository.create({
+            type: variant.type,
+            cta: variant.cta,
+            variables: variant.variables,
+            content: variant.content,
+            subject: variant.subject,
+            title: variant.title,
+            name: variant.name,
+            preheader: variant.preheader,
+            _feedId: override.noFeedId ? undefined : feeds[0]._id,
+            _layoutId: override.noLayoutId ? undefined : layouts[0]._id,
+            _creatorId: this.userId,
+            _organizationId: this.organizationId,
+            _environmentId: this.environmentId,
+          });
+
+          if (savedVariant?._id) {
+            variantSteps.push({
+              filters: variant.filters,
+              _templateId: savedVariant._id,
+              active: variant.active,
+              metadata: variant.metadata as IWorkflowStepMetadata,
+              replyCallback: variant.replyCallback,
+              uuid: variant.uuid,
+            });
+          }
+        }
+      }
+
+      if (savedMessageTemplate?._id) {
         templateSteps.push({
+          variants: variantSteps,
           filters: message.filters,
-          _templateId: saved._id,
+          _templateId: savedMessageTemplate._id,
           active: message.active,
-          metadata: message.metadata,
+          metadata: message.metadata as IWorkflowStepMetadata,
           replyCallback: message.replyCallback,
-          uuid: message.uuid,
+          uuid: message.uuid ?? uuid(),
+          name: message.name,
         });
       }
     }
@@ -115,9 +168,9 @@ export class NotificationTemplateService {
       active: true,
       preferenceSettings: override.preferenceSettingsOverride ?? undefined,
       draft: false,
-      tags: ['test-tag'],
+      tags: override.tags ?? ['test-tag'],
       description: faker.commerce.productDescription().slice(0, 90),
-      triggers: [
+      triggers: override.triggers ?? [
         {
           identifier: `test-event-${faker.datatype.uuid()}`,
           type: 'event',
@@ -129,6 +182,27 @@ export class NotificationTemplateService {
     } as NotificationTemplateEntity;
 
     const notificationTemplate = await this.notificationTemplateRepository.create(data);
+
+    await this.preferenceRepository.create({
+      _templateId: notificationTemplate._id,
+      _environmentId: this.environmentId,
+      _organizationId: this.organizationId,
+      _userId: this.userId,
+      type: PreferencesTypeEnum.USER_WORKFLOW,
+      preferences: buildWorkflowPreferencesFromPreferenceChannels(
+        override.critical,
+        override.preferenceSettingsOverride
+      ),
+    });
+
+    await this.preferenceRepository.create({
+      _templateId: notificationTemplate._id,
+      _environmentId: this.environmentId,
+      _organizationId: this.organizationId,
+      _userId: this.userId,
+      type: PreferencesTypeEnum.WORKFLOW_RESOURCE,
+      preferences: DEFAULT_WORKFLOW_PREFERENCES,
+    });
 
     return await this.notificationTemplateRepository.findById(
       notificationTemplate._id,

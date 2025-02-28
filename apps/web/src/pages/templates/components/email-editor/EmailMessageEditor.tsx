@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useMantineTheme, Group, Container, Card } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useFormContext, useFieldArray } from 'react-hook-form';
-import { EmailBlockTypeEnum, IEmailBlock } from '@novu/shared';
+import { EmailBlockTypeEnum, IEmailBlock, FeatureFlagsKeysEnum } from '@novu/shared';
 
-import { Upload } from '../../../../design-system/icons';
-import { colors, Text } from '../../../../design-system';
+import { Upload, colors, Text } from '@novu/design-system';
 import { ContentRow } from './ContentRow';
 import { ControlBar } from './ControlBar';
 import { ButtonRowContent } from './ButtonRowContent';
 import { TextRowContent } from './TextRowContent';
 import type { IForm, IFormStep, ITemplates } from '../formTypes';
+import { useStepFormPath } from '../../hooks/useStepFormPath';
+import { ROUTES } from '../../../../constants/routes';
+import { useFeatureFlag } from '../../../../hooks/useFeatureFlag';
 
 interface IStepEntityExtended extends IFormStep {
   template: ITemplates & {
@@ -26,16 +28,15 @@ interface IFormExtended extends IForm {
 export function EmailMessageEditor({
   branding,
   readonly,
-  stepIndex,
 }: {
   branding: { color: string; logo: string } | undefined;
   readonly: boolean;
-  stepIndex: number;
 }) {
   const methods = useFormContext<IFormExtended>();
-  const contentBlocks = useFieldArray({
+  const stepFormPath = useStepFormPath();
+  const contentBlocks = useFieldArray<IFormExtended, any, 'id' | 'type'>({
     control: methods.control,
-    name: `steps.${stepIndex}.template.content`,
+    name: `${stepFormPath}.template.content` as any,
   });
   const theme = useMantineTheme();
   const navigate = useNavigate();
@@ -83,14 +84,10 @@ export function EmailMessageEditor({
     return null;
   }
 
-  function getBrandSettingsUrl(): string {
-    return '/brand';
-  }
-
   return (
     <Card withBorder sx={styledCard}>
       <Container pl={0} pr={0}>
-        <div onClick={() => !branding?.logo && navigate(getBrandSettingsUrl())} role="link">
+        <div onClick={() => !branding?.logo && navigate(ROUTES.BRAND_SETTINGS)} role="link">
           <Dropzone
             styles={{
               inner: {
@@ -155,13 +152,12 @@ export function EmailMessageEditor({
                 onHoverElement={onHoverElement}
                 onRemove={() => removeBlock(blockIndex)}
                 allowRemove={contentBlocks.fields?.length > 1}
-                stepIndex={stepIndex}
                 blockIndex={blockIndex}
               >
                 {block.type === 'text' ? (
-                  <TextRowContent stepIndex={stepIndex} blockIndex={blockIndex} />
+                  <TextRowContent blockIndex={blockIndex} />
                 ) : (
-                  <ButtonRowContent brandingColor={branding?.color} stepIndex={stepIndex} blockIndex={blockIndex} />
+                  <ButtonRowContent brandingColor={branding?.color} blockIndex={blockIndex} />
                 )}
               </ContentRow>
             );
@@ -182,4 +178,5 @@ const styledCard = (theme) => ({
   borderRadius: '7px',
   borderColor: theme.colorScheme === 'dark' ? colors.B30 : colors.B80,
   padding: '30px',
+  overflow: 'visible',
 });

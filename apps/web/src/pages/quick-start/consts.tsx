@@ -1,10 +1,10 @@
 import React, { Dispatch } from 'react';
 import { Stack } from '@mantine/core';
 import { NavigateFunction } from 'react-router-dom';
-import { ChannelTypeEnum } from '@novu/shared';
+import { ChannelTypeEnum, UTM_CAMPAIGN_QUERY_PARAM } from '@novu/shared';
+import { Bell, Chat, Mail, Mobile, Sms } from '@novu/design-system';
 
-import { Bell, Chat, Mail, Mobile, Sms } from '../../design-system/icons';
-import { ROUTES } from '../../constants/routes.enum';
+import { ROUTES } from '../../constants/routes';
 import { WIDGET_EMBED_PATH } from '../../config';
 
 export const onBoardingSubscriberId = 'on-boarding-subscriber-id-123';
@@ -19,8 +19,8 @@ export const BACKEND_SOCKET_URL = '<BACKEND_SOCKET_URL>';
 export const setupProject = `cd notification-center-demo && npm run setup:onboarding -- ${APPLICATION_IDENTIFIER} ${API_KEY} ${BACKEND_API_URL} ${BACKEND_SOCKET_URL}`;
 export const npmRunCommand = 'npm run dev';
 export const frameworkSetupTitle = 'Choose your go-to framework';
-export const faqUrl = 'https://docs.novu.co/notification-center/introduction';
-export const notificationCenterDocsUrl = 'https://docs.novu.co/notification-center/introduction';
+export const faqUrl = `https://docs.novu.co/notification-center/introduction${UTM_CAMPAIGN_QUERY_PARAM}`;
+export const notificationCenterDocsUrl = `https://docs.novu.co/notification-center/introduction${UTM_CAMPAIGN_QUERY_PARAM}`;
 export const discordInviteUrl = 'https://discord.gg/novu';
 export const demoSetupSecondaryTitle = 'Follow the installation steps to connect your app';
 
@@ -33,6 +33,7 @@ interface ISnippetInstructions {
 }
 
 const installReactNotificationCenter = 'npm install @novu/notification-center';
+const installReactInbox = 'npm install @novu/react';
 const installAngularNotificationCenter = 'npm install @novu/notification-center-angular';
 const installVueNotificationCenter = 'npm install @novu/notification-center-vue';
 
@@ -50,6 +51,15 @@ export const Header = () => {
         {({ unseenCount }) => <NotificationBell unseenCount={unseenCount} />}
       </PopoverNotificationCenter>
     </NovuProvider>
+  );
+};`;
+
+export const reactStarterSnippetV2 = `import React from 'react';
+import { Inbox } from '@novu/react';
+
+export const Header = () => {
+  return (
+    <Inbox subscriberId={'${onBoardingSubscriberId}'} applicationIdentifier={'${APPLICATION_IDENTIFIER}'} />
   );
 };`;
 
@@ -252,6 +262,20 @@ export const frameworkInstructions: { key: string; value: ISnippetInstructions[]
   },
 ];
 
+export const frameworkInstructionsV2: { key: string; value: ISnippetInstructions[] }[] = [
+  {
+    key: FrameworkEnum.REACT,
+    value: [
+      {
+        instruction: 'First you have to install the package:',
+        snippet: installReactInbox,
+        language: 'bash',
+      },
+      { instruction: 'Then import and render the components:', snippet: reactStarterSnippetV2 },
+    ],
+  },
+];
+
 export enum OnBoardingAnalyticsEnum {
   FRAMEWORK_SETUP_VISIT = 'In app frameworks select',
   FRAMEWORKS_SETUP_VISIT = 'Framework Setup Page Visit',
@@ -279,6 +303,10 @@ export enum OnBoardingAnalyticsEnum {
   IN_APP_SANDBOX_SUCCESS_VISIT = 'Success Page Visit - [In-App Sandbox - Success]',
   IN_APP_SANDBOX_RUN_TRIGGER_CLICK = 'Run Trigger Clicked - [In-App Sandbox]',
   CONFIGURE_LATER_CLICK = 'Configure Later Click',
+  BRIDGE_PLAYGROUND_CONTINUE_CLICK = 'Continue Click [Bridge Playground]',
+
+  // Onboarding Experiment
+  ONBOARDING_EXPERIMENT_TEST_NOTIFICATION = 'Button Clicked - [Onboarding]',
 }
 
 export enum FlowTypeEnum {
@@ -288,16 +316,6 @@ export enum FlowTypeEnum {
 
 export const quickStartChannels: IQuickStartChannelConfiguration[] = [
   {
-    Icon: Bell,
-    title: 'In-App notifications',
-    displayName: 'In-App',
-    type: ChannelTypeEnum.IN_APP,
-    description: 'A set of APIs and components to create a customized notification center',
-    clickHandler: (options) => {
-      options.navigate(ROUTES.QUICK_START_NOTIFICATION_CENTER);
-    },
-  },
-  {
     Icon: Mail,
     title: 'Email',
     displayName: 'Email',
@@ -305,6 +323,16 @@ export const quickStartChannels: IQuickStartChannelConfiguration[] = [
     description: '🎉  Try our gift: 300 emails Use Novu provider for free or change the provider to yours',
     clickHandler: (options) => {
       options.setClickedChannel({ open: true, channelType: options.channelType });
+    },
+  },
+  {
+    Icon: Bell,
+    title: 'In-App notifications',
+    displayName: 'In-App',
+    type: ChannelTypeEnum.IN_APP,
+    description: 'A set of APIs and components to create a customized notification center',
+    clickHandler: (options) => {
+      options.navigate(ROUTES.QUICK_START_NOTIFICATION_CENTER);
     },
   },
   {
@@ -322,7 +350,7 @@ export const quickStartChannels: IQuickStartChannelConfiguration[] = [
     title: 'Chat',
     displayName: 'Chat',
     type: ChannelTypeEnum.CHAT,
-    description: 'Connect chat apps such as Slack, WhatsApp and Teams.',
+    description: 'Connect chat apps such as Slack, Discord and Teams.',
     clickHandler: (container) => {
       container.setClickedChannel({ open: true, channelType: container.channelType });
     },

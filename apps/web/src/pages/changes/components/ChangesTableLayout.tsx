@@ -1,4 +1,4 @@
-import * as capitalize from 'lodash.capitalize';
+import capitalize from 'lodash.capitalize';
 import { format } from 'date-fns';
 import { useMantineColorScheme } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,8 +6,7 @@ import { ChangeEntityTypeEnum } from '@novu/shared';
 import { useEffect } from 'react';
 import { showNotification } from '@mantine/notifications';
 
-import { IExtendedColumn, Table } from '../../../design-system/table/Table';
-import { Button, colors, Text, withCellLoading } from '../../../design-system';
+import { IExtendedColumn, Table, Button, colors, Text, withCellLoading } from '@novu/design-system';
 import { promoteChange } from '../../../api/changes';
 import { QueryKeys } from '../../../api/query.keys';
 
@@ -55,7 +54,7 @@ export const ChangesTable = ({
       Cell: withCellLoading(
         ({
           row: {
-            original: { type, templateName, messageType, previousDefaultLayout },
+            original: { type, templateName, messageType, previousDefaultLayout, translationGroup },
           },
         }) => (
           <div data-test-id="change-type">
@@ -77,12 +76,19 @@ export const ChangesTable = ({
             {type === ChangeEntityTypeEnum.DEFAULT_LAYOUT && (
               <Text color={colorScheme === 'dark' ? colors.B40 : colors.B70}>Default Layout Change</Text>
             )}
+            {type === ChangeEntityTypeEnum.TRANSLATION_GROUP && (
+              <Text color={colorScheme === 'dark' ? colors.B40 : colors.B70}>Translation Group Change</Text>
+            )}
+            {type === ChangeEntityTypeEnum.TRANSLATION && (
+              <Text color={colorScheme === 'dark' ? colors.B40 : colors.B70}>Translation Change</Text>
+            )}
             {previousDefaultLayout && (
               <Text data-test-id="previous-default-layout-content" rows={1} mt={5}>
                 Previous Default Layout: {previousDefaultLayout}
               </Text>
             )}
             <Text data-test-id="change-content" rows={1} mt={5}>
+              {translationGroup ? `${translationGroup}, ` : null}
               {templateName}
               {messageType ? `, ${messageType}` : null}
             </Text>
@@ -95,7 +101,7 @@ export const ChangesTable = ({
       Header: 'Changed By',
       Cell: withCellLoading(({ row: { original } }) => (
         <Text data-test-id="subscriber-name" rows={1}>
-          {capitalize(original.user.firstName)} {capitalize(original.user.lastName)}
+          {capitalize(original.user?.firstName)} {capitalize(original.user?.lastName)}
         </Text>
       )),
     },
@@ -136,7 +142,7 @@ export const ChangesTable = ({
       data={changes || []}
       columns={columns}
       pagination={{
-        pageSize: pageSize,
+        pageSize,
         current: page,
         total: totalCount,
         onPageChange: handleTableChange,

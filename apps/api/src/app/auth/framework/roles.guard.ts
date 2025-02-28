@@ -1,7 +1,6 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IJwtPayload } from '@novu/shared';
-import * as jwt from 'jsonwebtoken';
+import { UserSessionData } from '@novu/shared';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -9,27 +8,18 @@ export class RolesGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const roles = this.reflector.get<string[]>('roles', context.getHandler());
+
     if (!roles) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest();
-    if (!request.headers.authorization) return false;
+    const { user } = request;
 
-    const token = request.headers.authorization.split(' ')[1];
-    if (!token) return false;
+    return this.hasRequiredRole(user, roles);
+  }
 
-    const authorizationHeader = request.headers.authorization;
-    if (!authorizationHeader?.includes('ApiKey')) {
-      const user = jwt.decode(token) as IJwtPayload;
-      if (!user) return false;
-    }
-
-    /*
-     * TODO: The roles check implementation is currently not enabled
-     * As we are not using roles in the system at this point
-     */
-
-    return true;
+  private hasRequiredRole(user: UserSessionData, roles: string[]): boolean {
+    return roles.some((role) => user.roles.includes(role));
   }
 }

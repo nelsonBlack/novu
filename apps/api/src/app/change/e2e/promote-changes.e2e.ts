@@ -13,15 +13,16 @@ import {
   ChangeEntityTypeEnum,
   ChannelCTATypeEnum,
   EmailBlockTypeEnum,
+  FieldLogicalOperatorEnum,
+  FieldOperatorEnum,
   StepTypeEnum,
   FilterPartTypeEnum,
   TemplateVariableTypeEnum,
 } from '@novu/shared';
 import { UserSession } from '@novu/testing';
+import { CreateWorkflowRequestDto, UpdateWorkflowRequestDto } from '../../workflows-v1/dto';
 
-import { CreateWorkflowRequestDto, UpdateWorkflowRequestDto } from '../../workflows/dto';
-
-describe('Promote changes', () => {
+describe('Promote changes #novu-v1', () => {
   let session: UserSession;
   let prodEnv: EnvironmentEntity;
   const changeRepository: ChangeRepository = new ChangeRepository();
@@ -69,13 +70,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -96,7 +97,7 @@ describe('Promote changes', () => {
         _parentId: notificationTemplateId,
       });
 
-      expect(prodVersion._notificationGroupId).to.eq(prodGroup._id);
+      expect(prodVersion?._notificationGroupId).to.eq(prodGroup._id);
     });
 
     it('should promote step variables default values', async () => {
@@ -204,13 +205,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -222,9 +223,9 @@ describe('Promote changes', () => {
       let { body } = await session.testAgent.post(`/v1/workflows`).send(testTemplate);
 
       const updateData: UpdateWorkflowRequestDto = {
-        name: testTemplate.name,
-        tags: testTemplate.tags,
-        description: testTemplate.description,
+        name: testTemplate.name || '',
+        tags: testTemplate.tags || [],
+        description: testTemplate.description || '',
         steps: [],
         notificationGroupId: session.notificationGroups[0]._id,
       };
@@ -242,7 +243,7 @@ describe('Promote changes', () => {
         _parentId: notificationTemplateId,
       } as any);
 
-      expect(prodVersion.steps.length).to.eq(0);
+      expect(prodVersion?.steps.length).to.eq(0);
     });
 
     it('update active flag on notification template', async () => {
@@ -274,7 +275,7 @@ describe('Promote changes', () => {
         _parentId: notificationTemplateId,
       });
 
-      expect(prodVersion.active).to.eq(true);
+      expect(prodVersion?.active).to.eq(true);
     });
 
     it('update existing message', async () => {
@@ -295,13 +296,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -352,7 +353,7 @@ describe('Promote changes', () => {
         _parentId: step._templateId,
       });
 
-      expect(prodVersion.name).to.eq('test');
+      expect(prodVersion?.name).to.eq('test');
     });
 
     it('add one more message', async () => {
@@ -373,13 +374,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -431,13 +432,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'secondName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -479,13 +480,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -521,13 +522,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -632,13 +633,13 @@ describe('Promote changes', () => {
               {
                 isNegated: false,
                 type: 'GROUP',
-                value: 'AND',
+                value: FieldLogicalOperatorEnum.AND,
                 children: [
                   {
                     on: FilterPartTypeEnum.SUBSCRIBER,
                     field: 'firstName',
                     value: 'test value',
-                    operator: 'EQUAL',
+                    operator: FieldOperatorEnum.EQUAL,
                   },
                 ],
               },
@@ -659,7 +660,7 @@ describe('Promote changes', () => {
         _parentId: notificationTemplateId,
       });
 
-      expect(prodVersion.isBlueprint).to.equal(true);
+      expect(prodVersion?.isBlueprint).to.equal(true);
     });
 
     it('should merge creation, and status changes to one change', async () => {
@@ -722,11 +723,47 @@ describe('Promote changes', () => {
       });
       expect(prodFeeds.length).to.equal(0);
     });
+
+    it('should update workflow preferences on promote', async () => {
+      const testTemplate: Partial<CreateWorkflowRequestDto> = {
+        name: 'test email template',
+        description: 'This is a test description',
+        tags: ['test-tag'],
+        notificationGroupId: session.notificationGroups[0]._id,
+        steps: [],
+        preferenceSettings: {
+          email: true,
+          in_app: false,
+          sms: true,
+          chat: false,
+          push: false,
+        },
+      };
+
+      const { body } = await session.testAgent.post(`/v1/workflows`).send(testTemplate);
+      const notificationTemplateId = body.data._id;
+
+      await session.testAgent.put(`/v1/workflows/${notificationTemplateId}/status`).send({ active: true });
+
+      await session.applyChanges({
+        enabled: false,
+      });
+
+      const { body: prodVersion } = await session.testAgent.get(`/v1/workflows/${notificationTemplateId}`);
+
+      expect(prodVersion?.data?.preferenceSettings).to.deep.equal(testTemplate.preferenceSettings);
+    });
   });
 
-  async function getProductionEnvironment() {
-    return await environmentRepository.findOne({
+  async function getProductionEnvironment(): Promise<EnvironmentEntity> {
+    const production = await environmentRepository.findOne({
       _parentId: session.environment._id,
     });
+
+    if (!production) {
+      throw new Error('No production environment');
+    }
+
+    return production;
   }
 });

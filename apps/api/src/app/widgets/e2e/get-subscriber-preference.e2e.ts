@@ -2,10 +2,10 @@ import { NotificationTemplateEntity } from '@novu/dal';
 import { UserSession } from '@novu/testing';
 import axios from 'axios';
 import { expect } from 'chai';
-import { updateSubscriberPreference } from './update-subscriber-preference.e2e';
 import { ChannelTypeEnum } from '@novu/stateless';
+import { updateSubscriberPreference } from './update-subscriber-preference.e2e';
 
-describe('GET /widget/preferences', function () {
+describe('GET /widget/preferences #novu-v1', function () {
   let template: NotificationTemplateEntity;
   let session: UserSession;
 
@@ -23,11 +23,15 @@ describe('GET /widget/preferences', function () {
 
     const data = response.data.data[0];
 
+    expect(data.template.name).to.exist;
+    expect(data.template.tags[0]).to.equal('test-tag');
+    expect(data.template.critical).to.equal(false);
+    expect(data.template.triggers[0].identifier).to.contains('test-event-');
+
     expect(data.preference.channels.email).to.equal(true);
     expect(data.preference.channels.in_app).to.equal(true);
 
-    expect(data.preference.overrides.find((sources) => sources.channel === 'email').source).to.equal('template');
-    expect(data.preference.overrides.find((sources) => sources.channel === 'email').source).to.equal('template');
+    expect(data.preference.overrides.find((sources) => sources.channel === 'email').source).to.equal('subscriber');
   });
 
   it('should fetch according to template preferences defaults ', async function () {
@@ -42,11 +46,11 @@ describe('GET /widget/preferences', function () {
     expect(data.preference.channels.email).to.equal(true);
     expect(data.preference.channels.in_app).to.equal(false);
 
-    expect(data.preference.overrides.find((sources) => sources.channel === 'email').source).to.equal('template');
-    expect(data.preference.overrides.find((sources) => sources.channel === 'email').source).to.equal('template');
+    expect(data.preference.overrides.find((sources) => sources.channel === 'email').source).to.equal('subscriber');
   });
 
-  it('should fetch according to merged subscriber and template preferences ', async function () {
+  // `enabled` flag is not used anymore. The presence of a preference object means that the subscriber has enabled notifications.
+  it.skip('should fetch according to merged subscriber and template preferences ', async function () {
     const templateDefaultSettings = await session.createTemplate({
       preferenceSettingsOverride: { email: true, chat: true, push: true, sms: true, in_app: false },
       noFeedId: true,
@@ -83,7 +87,7 @@ describe('GET /widget/preferences', function () {
 });
 
 export async function getSubscriberPreference(subscriberToken: string) {
-  return await axios.get(`http://localhost:${process.env.PORT}/v1/widgets/preferences`, {
+  return await axios.get(`http://127.0.0.1:${process.env.PORT}/v1/widgets/preferences`, {
     headers: {
       Authorization: `Bearer ${subscriberToken}`,
     },

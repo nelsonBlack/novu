@@ -1,3 +1,4 @@
+/* eslint-disable global-require */
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ChangeEntity,
@@ -9,8 +10,10 @@ import {
   LayoutRepository,
 } from '@novu/dal';
 import { ChangeEntityTypeEnum } from '@novu/shared';
+import { ModuleRef } from '@nestjs/core';
 import { ChangesResponseDto } from '../../dtos/change-response.dto';
 import { GetChangesCommand } from './get-changes.command';
+import { ApiException } from '../../../shared/exceptions/api.exception';
 
 interface IViewEntity {
   templateName: string;
@@ -32,7 +35,8 @@ export class GetChanges {
     private messageTemplateRepository: MessageTemplateRepository,
     private notificationGroupRepository: NotificationGroupRepository,
     private feedRepository: FeedRepository,
-    private layoutRepository: LayoutRepository
+    private layoutRepository: LayoutRepository,
+    protected moduleRef: ModuleRef
   ) {}
 
   async execute(command: GetChangesCommand): Promise<ChangesResponseDto> {
@@ -65,6 +69,12 @@ export class GetChanges {
       if (change.type === ChangeEntityTypeEnum.DEFAULT_LAYOUT) {
         item = await this.getTemplateDataForDefaultLayout(change._entityId, command.environmentId);
       }
+      if (change.type === ChangeEntityTypeEnum.TRANSLATION) {
+        item = await this.getTemplateDataForTranslation(change._entityId, command.environmentId);
+      }
+      if (change.type === ChangeEntityTypeEnum.TRANSLATION_GROUP) {
+        item = await this.getTemplateDataForTranslationGroup(change._entityId, command.environmentId);
+      }
 
       list.push({
         ...change,
@@ -74,7 +84,7 @@ export class GetChanges {
       return list;
     }, Promise.resolve([]));
 
-    return { data: changes, totalCount: totalCount, page: command.page, pageSize: command.limit };
+    return { data: changes, totalCount, page: command.page, pageSize: command.limit };
   }
 
   private async getTemplateDataForMessageTemplate(
@@ -118,6 +128,7 @@ export class GetChanges {
         _id: entityId,
         _environmentId: environmentId,
       });
+      // eslint-disable-next-line prefer-destructuring
       item = items[0];
     }
 
@@ -131,6 +142,54 @@ export class GetChanges {
       templateId: item._id,
       templateName: item.name,
     };
+  }
+
+  private async getTemplateDataForTranslationGroup(
+    entityId: string,
+    environmentId: string
+  ): Promise<IViewEntity | Record<string, unknown>> {
+    try {
+      if (process.env.NOVU_ENTERPRISE === 'true' || process.env.CI_EE_TEST === 'true') {
+        if (!require('@novu/ee-shared-services')?.TranslationsService) {
+          throw new ApiException('Translation module is not loaded');
+        }
+        const service = this.moduleRef.get(require('@novu/ee-shared-services')?.TranslationsService, { strict: false });
+        const { name, identifier } = await service.getTranslationGroupData(environmentId, entityId);
+
+        return {
+          templateId: identifier,
+          templateName: name,
+        };
+      }
+    } catch (e) {
+      Logger.error(e, `Unexpected error while importing enterprise modules`, 'TranslationsService');
+    }
+
+    return {};
+  }
+
+  private async getTemplateDataForTranslation(
+    entityId: string,
+    environmentId: string
+  ): Promise<IViewEntity | Record<string, unknown>> {
+    try {
+      if (process.env.NOVU_ENTERPRISE === 'true' || process.env.CI_EE_TEST === 'true') {
+        if (!require('@novu/ee-shared-services')?.TranslationsService) {
+          throw new ApiException('Translation module is not loaded');
+        }
+        const service = this.moduleRef.get(require('@novu/ee-shared-services')?.TranslationsService, { strict: false });
+        const { name, group } = await service.getTranslationData(environmentId, entityId);
+
+        return {
+          templateName: name,
+          translationGroup: group,
+        };
+      }
+    } catch (e) {
+      Logger.error(e, `Unexpected error while importing enterprise modules`, 'TranslationsService');
+    }
+
+    return {};
   }
 
   private async getTemplateDataForNotificationGroup(
@@ -164,6 +223,7 @@ export class GetChanges {
 
     if (!item) {
       const items = await this.feedRepository.findDeleted({ _id: entityId, _environmentId: environmentId });
+      // eslint-disable-next-line prefer-destructuring
       item = items[0];
       if (!item) {
         Logger.error(`Could not find feed for id ${entityId}`);

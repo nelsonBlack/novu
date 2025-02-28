@@ -1,0 +1,54 @@
+import { buildEnvironmentByApiKey, buildSubscriberKey, buildUserKey } from './entities';
+import { CacheKeyTypeEnum, CacheKeyPrefixEnum, IdentifierPrefixEnum, OrgScopePrefixEnum } from './identifiers';
+import { buildUnscopedKey } from './builder.base';
+
+describe('Key builder for entities', () => {
+  describe('buildSubscriberKey', () => {
+    it('should build a subscriber key with the given subscriberId and environmentId', () => {
+      const subscriberId = '123';
+      const environmentId = 'test-env';
+      const expectedKey = `{${CacheKeyTypeEnum.ENTITY}:${CacheKeyPrefixEnum.SUBSCRIBER}:e=${environmentId}:s=${subscriberId}}`;
+      const actualKey = buildSubscriberKey({
+        subscriberId,
+        _environmentId: environmentId,
+      });
+      expect(actualKey).toEqual(expectedKey);
+    });
+  });
+
+  describe('buildUserKey', () => {
+    it('should build a user key with the given _id', () => {
+      const _id = '123';
+      const expectedKey = `{${CacheKeyTypeEnum.ENTITY}:${CacheKeyPrefixEnum.USER}:${IdentifierPrefixEnum.ID}=${_id}}`;
+      const actualKey = buildUserKey({ _id });
+      expect(actualKey).toEqual(expectedKey);
+    });
+  });
+
+  describe('buildEnvironmentByApiKey', () => {
+    it('should build an environment by api key with the given _id', () => {
+      const _id = '123';
+      // eslint-disable-next-line max-len
+      const expectedKey = `{${CacheKeyTypeEnum.ENTITY}:${CacheKeyPrefixEnum.ENVIRONMENT_BY_API_KEY}:${IdentifierPrefixEnum.API_KEY}=${_id}}`;
+      const actualKey = buildEnvironmentByApiKey({ apiKey: _id });
+      expect(actualKey).toEqual(expectedKey);
+    });
+  });
+
+  describe('buildKeyById', () => {
+    it('should build a key with the given parameters', () => {
+      const type = CacheKeyTypeEnum.ENTITY;
+      const keyEntity = CacheKeyPrefixEnum.SUBSCRIBER;
+      const identifierPrefix = IdentifierPrefixEnum.SUBSCRIBER_ID;
+      const identifier = '123';
+      const expectedKey = `{${type}:${keyEntity}:${identifierPrefix}=${identifier}}`;
+      const actualKey = buildUnscopedKey({
+        type,
+        keyEntity,
+        identifierPrefix,
+        identifier,
+      });
+      expect(actualKey).toEqual(expectedKey);
+    });
+  });
+});

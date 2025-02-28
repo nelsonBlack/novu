@@ -3,19 +3,12 @@ import { expect } from 'chai';
 import { ChannelTypeEnum, EmailProviderIdEnum, SmsProviderIdEnum } from '@novu/shared';
 import { IntegrationEntity } from '@novu/dal';
 
-const ORIGINAL_IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED;
-
-describe('Get Integrations - /integrations (GET)', function () {
+describe('Get Integrations - /integrations (GET) #novu-v2', function () {
   let session: UserSession;
 
   beforeEach(async () => {
     session = new UserSession();
     await session.initialize();
-    process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = 'true';
-  });
-
-  afterEach(async () => {
-    process.env.IS_MULTI_PROVIDER_CONFIGURATION_ENABLED = ORIGINAL_IS_MULTI_PROVIDER_CONFIGURATION_ENABLED;
   });
 
   it('should retrieve all the integrations of all environments from an organization from the prefilled test data', async () => {
@@ -75,7 +68,7 @@ describe('Get Integrations - /integrations (GET)', function () {
     const activeEmailIntegrations = activeIntegrations
       .filter(
         (integration) =>
-          integration.channel == ChannelTypeEnum.EMAIL && integration._environmentId === session.environment._id
+          integration.channel === ChannelTypeEnum.EMAIL && integration._environmentId === session.environment._id
       )
       .filter((integration) => integration.providerId !== EmailProviderIdEnum.Novu);
 

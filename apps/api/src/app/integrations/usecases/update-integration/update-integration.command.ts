@@ -1,9 +1,8 @@
 import { IsArray, IsDefined, IsMongoId, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { ICredentialsDto } from '@novu/shared';
+import { MessageFilter } from '@novu/application-generic';
 
 import { OrganizationCommand } from '../../../shared/commands/organization.command';
-import { StepFilter } from '../../../shared/dtos/step-filter';
-import { MessageFilter } from '../../../workflows/usecases/create-notification-template';
 
 export class UpdateIntegrationCommand extends OrganizationCommand {
   @IsOptional()
@@ -27,6 +26,9 @@ export class UpdateIntegrationCommand extends OrganizationCommand {
 
   @IsOptional()
   credentials?: ICredentialsDto;
+
+  @IsOptional()
+  removeNovuBranding?: boolean;
 
   @IsOptional()
   active?: boolean;

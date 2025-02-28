@@ -1,14 +1,15 @@
-import { Body, Controller, Delete, Param, Post, Scope, UseGuards } from '@nestjs/common';
-import { ApiOkResponse, ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { v4 as uuidv4 } from 'uuid';
+import { Body, Controller, Delete, Param, Post, Scope } from '@nestjs/common';
+import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
-  IJwtPayload,
-  ISubscribersDefine,
-  ITenantDefine,
-  TriggerRecipientSubscriber,
-  TriggerTenantContext,
+  AddressingTypeEnum,
+  ApiRateLimitCategoryEnum,
+  ApiRateLimitCostEnum,
+  ResourceEnum,
+  TriggerRequestCategoryEnum,
+  UserSessionData,
 } from '@novu/shared';
-import { SendTestEmail, SendTestEmailCommand } from '@novu/application-generic';
+import { ResourceCategory } from '@novu/application-generic';
 
 import {
   BulkTriggerEventDto,
@@ -18,17 +19,27 @@ import {
   TriggerEventToAllRequestDto,
 } from './dtos';
 import { CancelDelayed, CancelDelayedCommand } from './usecases/cancel-delayed';
-import { MapTriggerRecipients } from './usecases/map-trigger-recipients';
-import { ParseEventRequest, ParseEventRequestCommand } from './usecases/parse-event-request';
+import { ParseEventRequest, ParseEventRequestMulticastCommand } from './usecases/parse-event-request';
 import { ProcessBulkTrigger, ProcessBulkTriggerCommand } from './usecases/process-bulk-trigger';
 import { TriggerEventToAll, TriggerEventToAllCommand } from './usecases/trigger-event-to-all';
+import { SendTestEmail, SendTestEmailCommand } from './usecases/send-test-email';
 
 import { UserSession } from '../shared/framework/user.decorator';
 import { ExternalApiAccessible } from '../auth/framework/external-api.decorator';
-import { JwtAuthGuard } from '../auth/framework/auth.guard';
-import { ApiResponse } from '../shared/framework/response.decorator';
+import {
+  ApiCommonResponses,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiResponse,
+} from '../shared/framework/response.decorator';
 import { DataBooleanDto } from '../shared/dtos/data-wrapper-dto';
+import { ThrottlerCategory, ThrottlerCost } from '../rate-limiting/guards';
+import { UserAuthentication } from '../shared/framework/swagger/api.key.security';
+import { SdkGroupName, SdkMethodName, SdkUsageExample } from '../shared/framework/swagger/sdk.decorators';
 
+@ThrottlerCategory(ApiRateLimitCategoryEnum.TRIGGER)
+@ResourceCategory(ResourceEnum.EVENTS)
+@ApiCommonResponses()
 @Controller({
   path: 'events',
   scope: Scope.REQUEST,
@@ -36,7 +47,6 @@ import { DataBooleanDto } from '../shared/dtos/data-wrapper-dto';
 @ApiTags('Events')
 export class EventsController {
   constructor(
-    private mapTriggerRecipients: MapTriggerRecipients,
     private cancelDelayedUsecase: CancelDelayed,
     private triggerEventToAll: TriggerEventToAll,
     private sendTestEmail: SendTestEmail,
@@ -45,7 +55,7 @@ export class EventsController {
   ) {}
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @Post('/trigger')
   @ApiResponse(TriggerEventResponseDto, 201)
   @ApiOperation({
@@ -56,14 +66,15 @@ export class EventsController {
     Additional information can be passed according the body interface below.
     `,
   })
-  async trackEvent(
-    @UserSession() user: IJwtPayload,
+  @SdkMethodName('trigger')
+  @SdkUsageExample('Trigger Notification Event')
+  @SdkGroupName('')
+  async trigger(
+    @UserSession() user: UserSessionData,
     @Body() body: TriggerEventRequestDto
   ): Promise<TriggerEventResponseDto> {
-    const mappedTenant = body.tenant ? this.mapTenant(body.tenant) : null;
-
     const result = await this.parseEventRequest.execute(
-      ParseEventRequestCommand.create({
+      ParseEventRequestMulticastCommand.create({
         userId: user._id,
         environmentId: user.environmentId,
         organizationId: user.organizationId,
@@ -72,8 +83,12 @@ export class EventsController {
         overrides: body.overrides || {},
         to: body.to,
         actor: body.actor,
-        tenant: mappedTenant,
+        tenant: body.tenant,
         transactionId: body.transactionId,
+        addressingType: AddressingTypeEnum.MULTICAST,
+        requestCategory: TriggerRequestCategoryEnum.SINGLE,
+        bridgeUrl: body.bridgeUrl,
+        controls: body.controls,
       })
     );
 
@@ -81,8 +96,12 @@ export class EventsController {
   }
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
+  @ThrottlerCost(ApiRateLimitCostEnum.BULK)
   @Post('/trigger/bulk')
+  @SdkMethodName('triggerBulk')
+  @SdkUsageExample('Trigger Notification Events in Bulk')
+  @SdkGroupName('')
   @ApiResponse(TriggerEventResponseDto, 201, true)
   @ApiOperation({
     summary: 'Bulk trigger event',
@@ -91,8 +110,8 @@ export class EventsController {
       The bulk API is limited to 100 events per request.
     `,
   })
-  async triggerBulkEvents(
-    @UserSession() user: IJwtPayload,
+  async triggerBulk(
+    @UserSession() user: UserSessionData,
     @Body() body: BulkTriggerEventDto
   ): Promise<TriggerEventResponseDto[]> {
     return this.processBulkTriggerUsecase.execute(
@@ -106,21 +125,27 @@ export class EventsController {
   }
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
+  @ThrottlerCost(ApiRateLimitCostEnum.BULK)
   @Post('/trigger/broadcast')
   @ApiResponse(TriggerEventResponseDto)
+  @SdkMethodName('triggerBroadcast')
+  @SdkUsageExample('Broadcast Event to All')
+  @SdkGroupName('')
   @ApiOperation({
     summary: 'Broadcast event to all',
     description: `Trigger a broadcast event to all existing subscribers, could be used to send announcements, etc.
       In the future could be used to trigger events to a subset of subscribers based on defined filters.`,
   })
-  async trackEventToAll(
-    @UserSession() user: IJwtPayload,
+  @ApiCreatedResponse({
+    description: 'Broadcast request has been registered successfully ',
+    type: TriggerEventResponseDto, // Specify the response type
+  })
+  async broadcastEventToAll(
+    @UserSession() user: UserSessionData,
     @Body() body: TriggerEventToAllRequestDto
   ): Promise<TriggerEventResponseDto> {
     const transactionId = body.transactionId || uuidv4();
-    const mappedActor = body.actor ? this.mapActor(body.actor) : null;
-    const mappedTenant = body.tenant ? this.mapTenant(body.tenant) : null;
 
     return this.triggerEventToAll.execute(
       TriggerEventToAllCommand.create({
@@ -129,18 +154,18 @@ export class EventsController {
         organizationId: user.organizationId,
         identifier: body.name,
         payload: body.payload,
-        tenant: mappedTenant,
+        tenant: body.tenant,
         transactionId,
         overrides: body.overrides || {},
-        actor: mappedActor,
+        actor: body.actor,
       })
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @Post('/test/email')
   @ApiExcludeEndpoint()
-  async testEmailMessage(@UserSession() user: IJwtPayload, @Body() body: TestSendEmailRequestDto): Promise<void> {
+  async testEmailMessage(@UserSession() user: UserSessionData, @Body() body: TestSendEmailRequestDto): Promise<void> {
     return await this.sendTestEmail.execute(
       SendTestEmailCommand.create({
         subject: body.subject,
@@ -153,12 +178,16 @@ export class EventsController {
         userId: user._id,
         environmentId: user.environmentId,
         organizationId: user.organizationId,
+        workflowId: body.workflowId,
+        stepId: body.stepId,
+        bridge: body.bridge,
+        controls: body.controls,
       })
     );
   }
 
   @ExternalApiAccessible()
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @Delete('/trigger/:transactionId')
   @ApiOkResponse({
     type: DataBooleanDto,
@@ -170,10 +199,10 @@ export class EventsController {
      will cancel any active or pending workflows. This is useful to cancel active digests, delays etc...
     `,
   })
-  async cancelDelayed(
-    @UserSession() user: IJwtPayload,
-    @Param('transactionId') transactionId: string
-  ): Promise<boolean> {
+  @SdkMethodName('cancel')
+  @SdkUsageExample('Cancel Triggered Event')
+  @SdkGroupName('')
+  async cancel(@UserSession() user: UserSessionData, @Param('transactionId') transactionId: string): Promise<boolean> {
     return await this.cancelDelayedUsecase.execute(
       CancelDelayedCommand.create({
         userId: user._id,
@@ -182,17 +211,5 @@ export class EventsController {
         transactionId,
       })
     );
-  }
-
-  private mapActor(actor?: TriggerRecipientSubscriber | null): ISubscribersDefine | null {
-    if (!actor) return null;
-
-    return this.mapTriggerRecipients.mapSubscriber(actor);
-  }
-
-  private mapTenant(tenant?: TriggerTenantContext | null): ITenantDefine | null {
-    if (!tenant) return null;
-
-    return this.parseEventRequest.mapTenant(tenant);
   }
 }

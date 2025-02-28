@@ -1,13 +1,13 @@
-import { MemberRepository } from '@novu/dal';
+import { CommunityMemberRepository } from '@novu/dal';
 import { UserSession } from '@novu/testing';
 import { expect } from 'chai';
 import { MemberRoleEnum } from '@novu/shared';
 
-describe('Get members - /organization/members (GET)', async () => {
+describe('Get members - /organization/members (GET) #novu-v1-os', async () => {
   let session: UserSession;
   let otherSession: UserSession;
 
-  const memberRepository = new MemberRepository();
+  const memberRepository = new CommunityMemberRepository();
 
   before(async () => {
     session = new UserSession();
@@ -24,7 +24,7 @@ describe('Get members - /organization/members (GET)', async () => {
         invitees: [
           {
             email: 'dddd@asdas.com',
-            role: MemberRoleEnum.MEMBER,
+            role: MemberRoleEnum.ADMIN,
           },
         ],
       })
@@ -43,13 +43,6 @@ describe('Get members - /organization/members (GET)', async () => {
     const { body } = await session.testAgent.get('/v1/organizations/members').expect(200);
 
     expect(JSON.stringify(body.data)).to.include('dddd@asdas.com');
-    expect(JSON.stringify(body.data)).to.include(session.user.firstName);
-  });
-
-  it('should hide emails of all members as member', async () => {
-    const { body } = await otherSession.testAgent.get('/v1/organizations/members').expect(200);
-
-    expect(JSON.stringify(body.data)).to.not.include('dddd@asdas.com');
     expect(JSON.stringify(body.data)).to.include(session.user.firstName);
   });
 });

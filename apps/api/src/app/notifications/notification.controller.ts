@@ -1,6 +1,6 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { ChannelTypeEnum, IJwtPayload } from '@novu/shared';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ChannelTypeEnum, UserSessionData } from '@novu/shared';
 
 import { GetActivityFeed } from './usecases/get-activity-feed/get-activity-feed.usecase';
 import { GetActivityFeedCommand } from './usecases/get-activity-feed/get-activity-feed.command';
@@ -16,11 +16,13 @@ import { GetActivityCommand } from './usecases/get-activity/get-activity.command
 
 import { UserSession } from '../shared/framework/user.decorator';
 import { ExternalApiAccessible } from '../auth/framework/external-api.decorator';
-import { JwtAuthGuard } from '../auth/framework/auth.guard';
-import { ApiResponse } from '../shared/framework/response.decorator';
+import { ApiCommonResponses, ApiOkResponse, ApiResponse } from '../shared/framework/response.decorator';
+import { UserAuthentication } from '../shared/framework/swagger/api.key.security';
+import { SdkGroupName, SdkMethodName } from '../shared/framework/swagger/sdk.decorators';
 
+@ApiCommonResponses()
 @Controller('/notifications')
-@ApiTags('Notification')
+@ApiTags('Notifications')
 export class NotificationsController {
   constructor(
     private getActivityFeedUsecase: GetActivityFeed,
@@ -36,14 +38,13 @@ export class NotificationsController {
   @ApiOperation({
     summary: 'Get notifications',
   })
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @ExternalApiAccessible()
-  getNotifications(
-    @UserSession() user: IJwtPayload,
+  listNotifications(
+    @UserSession() user: UserSessionData,
     @Query() query: ActivitiesRequestDto
   ): Promise<ActivitiesResponseDto> {
     let channelsQuery: ChannelTypeEnum[] | null = null;
-
     if (query.channels) {
       channelsQuery = Array.isArray(query.channels) ? query.channels : [query.channels];
     }
@@ -65,7 +66,8 @@ export class NotificationsController {
 
     return this.getActivityFeedUsecase.execute(
       GetActivityFeedCommand.create({
-        page: query.page ? Number(query.page) : 0,
+        page: query.page,
+        limit: query.limit,
         organizationId: user.organizationId,
         environmentId: user.environmentId,
         userId: user._id,
@@ -75,6 +77,8 @@ export class NotificationsController {
         search: query.search,
         subscriberIds: subscribersQuery,
         transactionId: query.transactionId,
+        after: query.after,
+        before: query.before,
       })
     );
   }
@@ -84,9 +88,10 @@ export class NotificationsController {
     summary: 'Get notification statistics',
   })
   @Get('/stats')
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @ExternalApiAccessible()
-  getActivityStats(@UserSession() user: IJwtPayload): Promise<ActivityStatsResponseDto> {
+  @SdkGroupName('Notifications.Stats')
+  getActivityStats(@UserSession() user: UserSessionData): Promise<ActivityStatsResponseDto> {
     return this.getActivityStatsUsecase.execute(
       GetActivityStatsCommand.create({
         organizationId: user.organizationId,
@@ -96,7 +101,7 @@ export class NotificationsController {
   }
 
   @Get('/graph/stats')
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @ExternalApiAccessible()
   @ApiResponse(ActivityGraphStatesResponse, 200, true)
   @ApiOperation({
@@ -107,8 +112,10 @@ export class NotificationsController {
     type: Number,
     required: false,
   })
+  @SdkGroupName('Notifications.Stats')
+  @SdkMethodName('graph')
   getActivityGraphStats(
-    @UserSession() user: IJwtPayload,
+    @UserSession() user: UserSessionData,
     @Query('days') days = 32
   ): Promise<ActivityGraphStatesResponse[]> {
     return this.getActivityGraphStatsUsecase.execute(
@@ -126,15 +133,15 @@ export class NotificationsController {
   @ApiOperation({
     summary: 'Get notification',
   })
-  @UseGuards(JwtAuthGuard)
+  @UserAuthentication()
   @ExternalApiAccessible()
-  getActivity(
-    @UserSession() user: IJwtPayload,
+  getNotification(
+    @UserSession() user: UserSessionData,
     @Param('notificationId') notificationId: string
   ): Promise<ActivityNotificationResponseDto> {
     return this.getActivityUsecase.execute(
       GetActivityCommand.create({
-        notificationId: notificationId,
+        notificationId,
         organizationId: user.organizationId,
         environmentId: user.environmentId,
         userId: user._id,

@@ -8,9 +8,8 @@ import {
   MessageActionStatusEnum,
 } from '@novu/shared';
 import { ColorScheme, TextInput, useMantineColorScheme, useMantineTheme } from '@mantine/core';
-import { RemoveCircle } from '../../../../../design-system/icons/general/RemoveCircle';
+import { RemoveCircle, Button, colors } from '@novu/design-system';
 import styled from '@emotion/styled';
-import { Button, colors } from '../../../../../design-system';
 import { When } from '../../../../../components/utils/When';
 
 export function ActionBlockContainer({
@@ -25,7 +24,7 @@ export function ActionBlockContainer({
   onRemoveTemplate: () => void;
   isButtonsTemplateSelected: boolean;
   onChange: (data: any) => void;
-  value: IMessageAction;
+  value: IMessageAction | undefined;
   readonly: boolean;
 }) {
   return (
@@ -45,7 +44,7 @@ export function ActionBlockContainer({
 }
 
 interface ISelectedButtonTemplateProps {
-  value: IMessageAction;
+  value?: IMessageAction;
   onRemoveTemplate: () => void;
   onChange: (actions: any) => void;
   readonly: boolean;
@@ -56,6 +55,7 @@ function SelectedButtonTemplate(props: ISelectedButtonTemplateProps) {
   const buttonStyle = dark ? darkButtonStyle : lightButtonStyle;
 
   function handleOnButtonContentChange(data: any, buttonIndex: number) {
+    // eslint-disable-next-line no-unsafe-optional-chaining
     const currentButtonsValue = props?.value?.buttons ? [...props?.value?.buttons] : [];
 
     if (currentButtonsValue) {

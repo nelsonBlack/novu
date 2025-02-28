@@ -2,38 +2,45 @@ import { useRef, useState } from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import { ActionIcon, useMantineTheme } from '@mantine/core';
 import styled from '@emotion/styled';
-import { AlignCenterOutlined, AlignLeftOutlined, AlignRightOutlined } from '@ant-design/icons';
 import { TextAlignEnum } from '@novu/shared';
 
-import { DotsHorizontalOutlined, Trash } from '../../../../design-system/icons';
-import { Button, colors, Dropdown } from '../../../../design-system';
-import { useEnvController } from '../../../../hooks';
+import {
+  DotsHorizontalOutlined,
+  Trash,
+  Button,
+  colors,
+  Dropdown,
+  IconOutlineAlignHorizontalLeft,
+  IconOutlineAlignHorizontalCenter,
+  IconOutlineAlignHorizontalRight,
+} from '@novu/design-system';
+import { useEnvironment } from '../../../../hooks';
+import { useStepFormPath } from '../../hooks/useStepFormPath';
 
 export function ContentRow({
   children,
   onHoverElement,
   onRemove,
   allowRemove,
-  stepIndex,
   blockIndex,
 }: {
   children: JSX.Element | JSX.Element[];
   onHoverElement: (data: { top: number; height: number }) => void;
   onRemove: () => void;
   allowRemove: boolean;
-  stepIndex: number;
   blockIndex: number;
 }) {
   const methods = useFormContext();
-  const { readonly } = useEnvController();
+  const { readonly } = useEnvironment();
   const theme = useMantineTheme();
   const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
   const parentRef = useRef<HTMLDivElement>(null);
+  const stepFormPath = useStepFormPath();
 
   const textAlignments = [
-    ['left', <AlignLeftOutlined key="left-align-icon" />],
-    ['center', <AlignCenterOutlined key="center-align-icon" />],
-    ['right', <AlignRightOutlined key="right-align-icon" />],
+    ['left', <IconOutlineAlignHorizontalLeft key="left-align-icon" />],
+    ['center', <IconOutlineAlignHorizontalCenter key="center-align-icon" />],
+    ['right', <IconOutlineAlignHorizontalRight key="right-align-icon" />],
   ];
 
   function onHover() {
@@ -51,7 +58,7 @@ export function ContentRow({
     </Dropdown.Label>,
     <Controller
       key="button-wrapper"
-      name={`steps.${stepIndex}.template.content.${blockIndex}.styles.textAlign`}
+      name={`${stepFormPath}.template.content.${blockIndex}.styles.textAlign`}
       defaultValue={TextAlignEnum.LEFT}
       control={methods.control}
       render={({ field }) => {

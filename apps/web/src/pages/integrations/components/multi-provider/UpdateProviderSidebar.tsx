@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Group, Center, Box } from '@mantine/core';
 import styled from '@emotion/styled';
-import slugify from 'slugify';
 import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
-import { useIntercom } from 'react-use-intercom';
+import { useClipboard, useDisclosure } from '@mantine/hooks';
 import {
   CHANNELS_WITH_PRIMARY,
   CredentialsKeyEnum,
@@ -12,15 +11,14 @@ import {
   IConstructIntegrationDto,
   ICredentialsDto,
   InAppProviderIdEnum,
-  NOVU_PROVIDERS,
   SmsProviderIdEnum,
+  slugify,
 } from '@novu/shared';
-
-import { Button, colors, Sidebar, Text } from '../../../../design-system';
+import { Button, colors, Input, Sidebar, Text, Check, Copy } from '@novu/design-system';
 import { useProviders } from '../../useProviders';
 import type { IIntegratedProvider } from '../../types';
 import { IntegrationInput } from '../IntegrationInput';
-import { useFetchEnvironments } from '../../../../hooks/useFetchEnvironments';
+import { useEnvironment } from '../../../../hooks';
 import { useUpdateIntegration } from '../../../../api/hooks/useUpdateIntegration';
 import { successMessage } from '../../../../utils/notifications';
 import { UpdateIntegrationSidebarHeader } from '../UpdateIntegrationSidebarHeader';
@@ -37,7 +35,9 @@ import { NovuProviderSidebarContent } from './NovuProviderSidebarContent';
 import { useSelectPrimaryIntegrationModal } from './useSelectPrimaryIntegrationModal';
 import { ShareableUrl } from '../Modal/ConnectIntegrationForm';
 import { Conditions, IConditions } from '../../../../components/conditions';
-import { useDisclosure } from '@mantine/hooks';
+import { useWebhookSupportStatus } from '../../../../api/hooks';
+import { defaultIntegrationConditionsProps } from '../../constants';
+import { NovuInAppRemoveBranding } from '../NovuInAppRemoveBranding';
 
 interface IProviderForm {
   name: string;
@@ -45,6 +45,7 @@ interface IProviderForm {
   active: boolean;
   identifier: string;
   conditions: IConditions[];
+  removeNovuBranding?: boolean;
 }
 
 enum SidebarStateEnum {
@@ -61,18 +62,28 @@ export function UpdateProviderSidebar({
   integrationId?: string;
   onClose: () => void;
 }) {
-  const { update } = useIntercom();
-  const { isLoading: areEnvironmentsLoading } = useFetchEnvironments();
-  const [selectedProvider, setSelectedProvider] = useState<IIntegratedProvider | null>(null);
+  const { isLoaded: isEnvironmentLoaded } = useEnvironment();
   const [sidebarState, setSidebarState] = useState<SidebarStateEnum>(SidebarStateEnum.NORMAL);
   const [framework, setFramework] = useState<FrameworkEnum | null>(null);
   const { providers, isLoading: areProvidersLoading } = useProviders();
+  const [selectedProvider, setSelectedProvider] = useState<IIntegratedProvider | null>(() => {
+    const provider = providers.find((el) => el.integrationId === integrationId);
+
+    return provider ?? null;
+  });
   const isNovuInAppProvider = selectedProvider?.providerId === InAppProviderIdEnum.Novu;
   const { openModal: openSelectPrimaryIntegrationModal, SelectPrimaryIntegrationModal } =
     useSelectPrimaryIntegrationModal();
   const [conditionsFormOpened, { close: closeConditionsForm, open: openConditionsForm }] = useDisclosure(false);
+  const webhookUrlClipboard = useClipboard({ timeout: 1000 });
 
   const { updateIntegration, isLoadingUpdate } = useUpdateIntegration(selectedProvider?.integrationId || '');
+
+  const { isWebhookEnabled, webhookUrl } = useWebhookSupportStatus({
+    hasCredentials: selectedProvider?.hasCredentials,
+    integrationId: selectedProvider?.integrationId,
+    channel: selectedProvider?.channel,
+  });
 
   const methods = useForm<IProviderForm>({
     shouldUseNativeValidation: false,
@@ -116,10 +127,7 @@ export function UpdateProviderSidebar({
 
   useEffect(() => {
     if (selectedProvider && !selectedProvider?.identifier) {
-      const newIdentifier = slugify(selectedProvider?.displayName, {
-        lower: true,
-        strict: true,
-      });
+      const newIdentifier = slugify(selectedProvider?.displayName);
 
       setValue('identifier', newIdentifier);
     }
@@ -145,6 +153,7 @@ export function UpdateProviderSidebar({
       }, {} as any),
       conditions: foundProvider.conditions,
       active: foundProvider.active,
+      removeNovuBranding: foundProvider.removeNovuBranding,
     });
   }, [reset, integrationId, providers]);
 
@@ -165,7 +174,6 @@ export function UpdateProviderSidebar({
       setSidebarState(SidebarStateEnum.NORMAL);
     }
     onClose();
-    update({ hideDefaultLauncher: false });
   };
 
   const updateAndSelectPrimaryIntegration = async (data: IConstructIntegrationDto) => {
@@ -240,8 +248,9 @@ export function UpdateProviderSidebar({
         conditions={conditions}
         name={name}
         isOpened={conditionsFormOpened}
-        setConditions={updateConditions}
+        updateConditions={updateConditions}
         onClose={closeConditionsForm}
+        {...defaultIntegrationConditionsProps}
       />
     );
   }
@@ -254,7 +263,7 @@ export function UpdateProviderSidebar({
       <FormProvider {...methods}>
         <Sidebar
           isOpened={isSidebarOpened}
-          isLoading={areProvidersLoading || areEnvironmentsLoading}
+          isLoading={areProvidersLoading || !isEnvironmentLoaded}
           onClose={onSidebarClose}
           onSubmit={onSubmit}
           customHeader={
@@ -292,7 +301,7 @@ export function UpdateProviderSidebar({
     <FormProvider {...methods}>
       <Sidebar
         isOpened={isSidebarOpened}
-        isLoading={areProvidersLoading || areEnvironmentsLoading}
+        isLoading={areProvidersLoading || !isEnvironmentLoaded}
         isExpanded={sidebarState === SidebarStateEnum.EXPANDED}
         onSubmit={onSubmit}
         onClose={onSidebarClose}
@@ -357,6 +366,22 @@ export function UpdateProviderSidebar({
               />
             </InputWrapper>
           ))}
+          {isNovuInAppProvider && <NovuInAppRemoveBranding control={control} />}
+          {isWebhookEnabled && (
+            <InputWrapper>
+              <Input
+                label="Webhook URL"
+                value={webhookUrl}
+                readOnly
+                rightSection={
+                  <CopyWrapper onClick={() => webhookUrlClipboard.copy(webhookUrl)}>
+                    {webhookUrlClipboard.copied ? <Check /> : <Copy />}
+                  </CopyWrapper>
+                }
+                data-test-id="provider-webhook-url"
+              />
+            </InputWrapper>
+          )}
           <ShareableUrl provider={selectedProvider?.providerId} hmacEnabled={!!hmacEnabled} />
           {isNovuInAppProvider && <NovuInAppFrameworks onFrameworkClick={onFrameworkClickCallback} />}
         </When>
@@ -392,4 +417,11 @@ const Free = styled.span`
   font-size: 14px;
   min-width: fit-content;
   margin-left: -4px;
+`;
+
+const CopyWrapper = styled.div`
+  cursor: pointer;
+  &:hover {
+    opacity: 0.8;
+  }
 `;

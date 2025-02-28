@@ -3,14 +3,16 @@ import {
   ButtonTypeEnum,
   IChannelCredentials,
   ISubscribersDefine,
+  MessagesStatusEnum,
+  PreferenceLevelEnum,
 } from '@novu/shared';
-import { MarkMessagesAsEnum } from '@novu/shared';
 import {
   IGetSubscriberNotificationFeedParams,
   IMarkFields,
   IMarkMessageActionFields,
   ISubscriberPayload,
   ISubscribers,
+  IUpdateSubscriberGlobalPreferencePayload,
   IUpdateSubscriberPreferencePayload,
 } from './subscriber.interface';
 import { WithHttp } from '../novu.interface';
@@ -51,19 +53,21 @@ export class Subscribers extends WithHttp implements ISubscribers {
   async setCredentials(
     subscriberId: string,
     providerId: string,
-    credentials: IChannelCredentials
+    credentials: IChannelCredentials,
+    integrationIdentifier?: string,
   ) {
     return await this.http.put(`/subscribers/${subscriberId}/credentials`, {
       providerId,
       credentials: {
         ...credentials,
       },
+      ...(integrationIdentifier && { integrationIdentifier }),
     });
   }
 
   async deleteCredentials(subscriberId: string, providerId: string) {
     return await this.http.delete(
-      `/subscribers/${subscriberId}/credentials/${providerId}`
+      `/subscribers/${subscriberId}/credentials/${providerId}`,
     );
   }
 
@@ -87,26 +91,66 @@ export class Subscribers extends WithHttp implements ISubscribers {
     return await this.http.delete(`/subscribers/${subscriberId}`);
   }
 
-  async getPreference(subscriberId: string) {
-    return await this.http.get(`/subscribers/${subscriberId}/preferences`);
+  async getPreference(
+    subscriberId: string,
+    options: { includeInactiveChannels?: boolean } = {},
+  ) {
+    const { includeInactiveChannels } = options;
+    const searchParams = new URLSearchParams();
+
+    if (includeInactiveChannels === true) {
+      searchParams.append('includeInactiveChannels', 'true');
+    } else if (includeInactiveChannels === false) {
+      searchParams.append('includeInactiveChannels', 'false');
+    }
+
+    const searchParamsString = searchParams.toString();
+
+    let url = `/subscribers/${subscriberId}/preferences`;
+    if (searchParamsString) {
+      url += `?${searchParamsString}`;
+    }
+
+    return await this.http.get(url);
+  }
+
+  async getGlobalPreference(subscriberId: string) {
+    return await this.http.get(
+      `/subscribers/${subscriberId}/preferences/${PreferenceLevelEnum.GLOBAL}`,
+    );
+  }
+
+  async getPreferenceByLevel(subscriberId: string, level: PreferenceLevelEnum) {
+    return await this.http.get(
+      `/subscribers/${subscriberId}/preferences/${level}`,
+    );
   }
 
   async updatePreference(
     subscriberId: string,
     templateId: string,
-    data: IUpdateSubscriberPreferencePayload
+    data: IUpdateSubscriberPreferencePayload,
   ) {
     return await this.http.patch(
       `/subscribers/${subscriberId}/preferences/${templateId}`,
       {
         ...data,
-      }
+      },
     );
+  }
+
+  async updateGlobalPreference(
+    subscriberId: string,
+    data: IUpdateSubscriberGlobalPreferencePayload,
+  ) {
+    return await this.http.patch(`/subscribers/${subscriberId}/preferences`, {
+      ...data,
+    });
   }
 
   async getNotificationsFeed(
     subscriberId: string,
-    { payload, ...rest }: IGetSubscriberNotificationFeedParams = {}
+    { payload, ...rest }: IGetSubscriberNotificationFeedParams = {},
   ) {
     const payloadString = payload
       ? Buffer.from(JSON.stringify(payload)).toString('base64')
@@ -119,7 +163,7 @@ export class Subscribers extends WithHttp implements ISubscribers {
           payload: payloadString,
           ...rest,
         },
-      }
+      },
     );
   }
 
@@ -130,7 +174,7 @@ export class Subscribers extends WithHttp implements ISubscribers {
         params: {
           seen,
         },
-      }
+      },
     );
   }
 
@@ -143,7 +187,7 @@ export class Subscribers extends WithHttp implements ISubscribers {
       {
         messageId,
         mark: { seen: true },
-      }
+      },
     );
   }
 
@@ -156,32 +200,32 @@ export class Subscribers extends WithHttp implements ISubscribers {
       {
         messageId,
         mark: { read: true },
-      }
+      },
     );
   }
 
   async markMessageAs(
     subscriberId: string,
     messageId: string,
-    mark: IMarkFields
+    mark: IMarkFields,
   ) {
     return await this.http.post(
       `/subscribers/${subscriberId}/messages/markAs`,
       {
         messageId,
         mark,
-      }
+      },
     );
   }
 
   async markAllMessagesAs(
     subscriberId: string,
-    markAs: MarkMessagesAsEnum,
-    feedIdentifier?: string | string[]
+    markAs: MessagesStatusEnum,
+    feedIdentifier?: string | string[],
   ): Promise<AxiosResponse<{ data: number }>> {
     return await this.http.post(
       `/subscribers/${subscriberId}/messages/mark-all`,
-      { markAs, feedIdentifier }
+      { markAs, feedIdentifier },
     );
   }
 
@@ -189,14 +233,14 @@ export class Subscribers extends WithHttp implements ISubscribers {
     subscriberId: string,
     messageId: string,
     type: ButtonTypeEnum,
-    data: IMarkMessageActionFields
+    data: IMarkMessageActionFields,
   ) {
     return await this.http.post(
       `/subscribers/${subscriberId}/messages/${messageId}/actions/${type}`,
       {
         status: data.status,
         ...(data?.payload && { payload: data.payload }),
-      }
+      },
     );
   }
 }

@@ -2,7 +2,15 @@
 
 # Recreate config file
 rm -rf ./env-config.js
+
 touch ./env-config.js
+
+envFile=${1:-.env.sample}
+
+if [ ! -f .env ]; then
+  echo "Copying ${envFile} to .env..."
+  cp ${envFile} .env
+fi
 
 # Add assignment
 echo "window._env_ = {" >>./env-config.js
@@ -33,6 +41,8 @@ while read -r line || [[ -n "$line" ]]; do
 
   # Append configuration property to JS file
   echo "  $varname: '$value'," >>./env-config.js
-done <.env
+done < .env
 
 echo "};" >>./env-config.js
+
+echo "The env-config.js file was generated!"

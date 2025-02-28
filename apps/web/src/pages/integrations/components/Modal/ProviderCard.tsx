@@ -2,13 +2,11 @@ import { IConfigCredentials } from '@novu/shared';
 import styled from '@emotion/styled';
 import { Group, useMantineColorScheme } from '@mantine/core';
 
-import { Button, colors, shadows } from '../../../../design-system';
+import { Button, colors, shadows, Settings, getGradient } from '@novu/design-system';
 import { CardStatusBar } from '../CardStatusBar';
-import { Settings } from '../../../../design-system/icons';
 import type { IIntegratedProvider } from '../../types';
 import { When } from '../../../../components/utils/When';
 import { CONTEXT_PATH } from '../../../../config';
-import { getGradient } from '../../../../design-system/config/helper';
 
 export function ProviderCard({
   provider,
@@ -153,8 +151,8 @@ const StyledCard = styled.div<{ dark: boolean; active: boolean; selected: boolea
     return selected
       ? `
            background: ${dark ? getGradient(colors.B20) : getGradient(colors.BGLight)} padding-box, ${
-          colors.vertical
-        } border-box;
+             colors.vertical
+           } border-box;
       `
       : undefined;
   }};

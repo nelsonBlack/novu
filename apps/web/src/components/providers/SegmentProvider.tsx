@@ -1,5 +1,6 @@
-import { SegmentService } from '../../utils/segment';
 import React from 'react';
+
+import { SegmentService } from '../../utils/segment';
 
 type Props = {
   children: React.ReactNode;
@@ -13,6 +14,11 @@ export const SegmentProvider = ({ children }: Props) => {
   return <SegmentContext.Provider value={segment}>{children}</SegmentContext.Provider>;
 };
 
+/**
+ * Note: you cannot destructure the result of this hook without risking pre-mature access of the underlying AnalyticsService.
+ *
+ * const segment = useSegment();
+ */
 export const useSegment = () => {
   const result = React.useContext(SegmentContext);
   if (!result) {

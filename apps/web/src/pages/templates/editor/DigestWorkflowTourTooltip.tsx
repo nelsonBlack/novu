@@ -5,9 +5,8 @@ import { useFormContext } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router-dom';
 import { StepTypeEnum } from '@novu/shared';
 
+import { Button, colors, DotsNavigation, Clock, LetterOpened, BellWithNotification } from '@novu/design-system';
 import { useTour } from './TourProvider';
-import { Button, colors, DotsNavigation } from '../../../design-system';
-import { Clock, LetterOpened, BellWithNotification } from '../../../design-system/icons';
 import { IForm } from '../components/formTypes';
 import { useSegment } from '../../../components/providers/SegmentProvider';
 import { DigestWorkflowTourAnalyticsEnum, HINT_INDEX_TO_CLICK_ANALYTICS, ordinalNumbers } from '../constants';
@@ -105,12 +104,12 @@ export const DigestWorkflowTourTooltip = ({
   const handleOnClick = (tourStepIndex: number, isFromNavigation = false) => {
     if (tourStepIndex === 0) {
       const digestStep = steps.find((el) => el.template?.type === StepTypeEnum.DIGEST);
-      navigate(basePath + '/' + StepTypeEnum.DIGEST + '/' + digestStep?.uuid);
+      navigate(`${basePath}/${StepTypeEnum.DIGEST}/${digestStep?.uuid}`);
     } else if (tourStepIndex === 1) {
       const emailStep = steps.find((el) => el.template?.type === StepTypeEnum.EMAIL);
-      navigate(basePath + '/' + StepTypeEnum.EMAIL + '/' + emailStep?.uuid);
+      navigate(`${basePath}/${StepTypeEnum.EMAIL}/${emailStep?.uuid}`);
     } else if (tourStepIndex === 2) {
-      navigate(basePath + '/test-workflow');
+      navigate(`${basePath}/test-workflow`);
     }
     tourStorage.setTour('digest', templateId, tourStepIndex);
     setStep(tourStepIndex);

@@ -1,11 +1,16 @@
 import { expect } from 'chai';
 import { ChangeRepository } from '@novu/dal';
-import { EmailBlockTypeEnum, StepTypeEnum, FilterPartTypeEnum } from '@novu/shared';
+import {
+  EmailBlockTypeEnum,
+  StepTypeEnum,
+  FilterPartTypeEnum,
+  FieldLogicalOperatorEnum,
+  FieldOperatorEnum,
+} from '@novu/shared';
 import { UserSession } from '@novu/testing';
+import { CreateWorkflowRequestDto, UpdateWorkflowRequestDto } from '../../workflows-v1/dto';
 
-import { CreateWorkflowRequestDto, UpdateWorkflowRequestDto } from '../../workflows/dto';
-
-describe('Get changes', () => {
+describe('Get changes #novu-v1', () => {
   let session: UserSession;
   const changeRepository: ChangeRepository = new ChangeRepository();
 
@@ -32,13 +37,13 @@ describe('Get changes', () => {
             {
               isNegated: false,
               type: 'GROUP',
-              value: 'AND',
+              value: FieldLogicalOperatorEnum.AND,
               children: [
                 {
                   on: FilterPartTypeEnum.SUBSCRIBER,
                   field: 'firstName',
                   value: 'test value',
-                  operator: 'EQUAL',
+                  operator: FieldOperatorEnum.EQUAL,
                 },
               ],
             },
@@ -52,9 +57,9 @@ describe('Get changes', () => {
     await session.applyChanges();
 
     const updateData: UpdateWorkflowRequestDto = {
-      name: testTemplate.name,
-      tags: testTemplate.tags,
-      description: testTemplate.description,
+      name: testTemplate.name || '',
+      tags: testTemplate.tags || [],
+      description: testTemplate.description || '',
       steps: [],
       notificationGroupId: session.notificationGroups[0]._id,
     };

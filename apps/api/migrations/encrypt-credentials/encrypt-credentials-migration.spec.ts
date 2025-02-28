@@ -22,7 +22,7 @@ describe('Encrypt Old Credentials', function () {
       active: false,
     };
 
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 2; i += 1) {
       await integrationRepository.create({
         _environmentId: session.environment._id,
         _organizationId: session.organization._id,
@@ -51,13 +51,13 @@ describe('Encrypt Old Credentials', function () {
       });
     }
 
-    const newIntegration = await integrationRepository.find({});
+    const newIntegration = await integrationRepository.find({} as any);
 
     expect(newIntegration.length).to.equal(2);
 
     await encryptOldCredentialsMigration();
 
-    const encryptIntegration = await integrationRepository.find({});
+    const encryptIntegration = await integrationRepository.find({} as any);
 
     for (const integrationKey in encryptIntegration) {
       const integration = encryptIntegration[integrationKey];

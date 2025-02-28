@@ -1,5 +1,4 @@
-import * as mongoose from 'mongoose';
-import { Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 import { schemaOptions } from '../schema-default.options';
 import { UserDBModel } from './user.entity';
@@ -39,11 +38,13 @@ const userSchema = new Schema<UserDBModel>(
     },
     servicesHashes: {
       intercom: Schema.Types.String,
+      plain: Schema.Types.String,
     },
+    jobTitle: Schema.Types.String,
+    externalId: Schema.Types.String,
   },
   schemaOptions
 );
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
 export const User =
   (mongoose.models.User as mongoose.Model<UserDBModel>) || mongoose.model<UserDBModel>('User', userSchema);

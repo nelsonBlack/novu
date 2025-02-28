@@ -1,6 +1,6 @@
 import { useIntercom } from 'react-use-intercom';
+import { Button, Size } from '@novu/design-system';
 import { INTERCOM_APP_ID } from '../../config';
-import { Button, Size } from '../../design-system';
 
 interface GotAQuestionButtonProps {
   mt: number;

@@ -1,4 +1,4 @@
-import React, { ReactElement, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { ReactElement, useEffect, useState, useMemo, useCallback, PropsWithChildren } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { IOrganizationEntity } from '@novu/shared';
 import { ApiService } from '@novu/client';
@@ -27,13 +27,14 @@ export const queryClient = new QueryClient({
 const DEFAULT_FETCHING_STRATEGY: IFetchingStrategy = {
   fetchUnseenCount: true,
   fetchOrganization: true,
+  fetchUnreadCount: true,
   fetchNotifications: false,
   fetchUserPreferences: false,
+  fetchUserGlobalPreferences: false,
 };
 
-export interface INovuProviderProps {
+export interface INovuProviderProps extends PropsWithChildren<{}> {
   stores?: IStore[];
-  children: React.ReactNode;
   backendUrl?: string;
   subscriberId?: string;
   applicationIdentifier: string;

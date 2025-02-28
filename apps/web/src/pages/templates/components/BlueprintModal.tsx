@@ -1,19 +1,18 @@
-import { Modal, useMantineTheme } from '@mantine/core';
-import { Center, Loader } from '@mantine/core';
+import { Modal, useMantineTheme, Center, Loader } from '@mantine/core';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { IUserEntity } from '@novu/shared';
 
-import { colors, shadows, Title, Text, Button } from '../../../design-system';
+import { IResponseError, IUserEntity, WorkflowCreationSourceEnum } from '@novu/shared';
+import { colors, shadows, Title, Text, Button } from '@novu/design-system';
+
 import { updateUserOnBoarding } from '../../../api/user';
 import { getBlueprintTemplateById } from '../../../api/notification-templates';
 import { errorMessage } from '../../../utils/notifications';
 import { When } from '../../../components/utils/When';
 import { useSegment } from '../../../components/providers/SegmentProvider';
 import { useCreateTemplateFromBlueprint } from '../../../api/hooks';
-import { TemplateCreationSourceEnum } from '../shared';
-import { ROUTES } from '../../../constants/routes.enum';
+import { ROUTES } from '../../../constants/routes';
 
 export function BlueprintModal() {
   const theme = useMantineTheme();
@@ -29,11 +28,9 @@ export function BlueprintModal() {
     localStorage.removeItem('blueprintId');
   };
 
-  const { mutateAsync: updateOnBoardingStatus } = useMutation<
-    IUserEntity,
-    { error: string; message: string; statusCode: number },
-    { showOnBoarding: boolean }
-  >(({ showOnBoarding }) => updateUserOnBoarding(showOnBoarding));
+  const { mutateAsync: updateOnBoardingStatus } = useMutation<IUserEntity, IResponseError, { showOnBoarding: boolean }>(
+    ({ showOnBoarding }) => updateUserOnBoarding(showOnBoarding)
+  );
 
   async function disableOnboarding() {
     await updateOnBoardingStatus({ showOnBoarding: false });
@@ -124,7 +121,7 @@ export function BlueprintModal() {
               if (blueprint) {
                 createTemplateFromBlueprint({
                   blueprint,
-                  params: { __source: TemplateCreationSourceEnum.NOTIFICATION_DIRECTORY },
+                  params: { __source: WorkflowCreationSourceEnum.NOTIFICATION_DIRECTORY },
                 });
               }
             }}

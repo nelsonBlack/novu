@@ -14,15 +14,18 @@ import {
 import { IUserPreferenceSettings } from '@novu/client';
 
 import { ISession } from '../../shared/interfaces';
-import { NovuProvider } from '../../components';
-import { queryClient } from '../../components/novu-provider/NovuProvider';
+import { NovuProvider } from '..';
+import { queryClient } from './NovuProvider';
 import { NotificationBell, PopoverNotificationCenter } from '../..';
 
 configure({
   testIdAttribute: 'data-test-id',
 });
 
-const promiseResolveTimeout = (ms: number, arg: unknown = {}) => new Promise((resolve) => setTimeout(resolve, ms, arg));
+const promiseResolveTimeout = (ms: number, arg: unknown = {}) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms, arg);
+  });
 
 const templateId = 'templateId';
 const notificationId = 'notificationId';
@@ -42,8 +45,10 @@ const mockSession: ISession = {
 const mockOrganization: IOrganizationEntity = {
   _id: '_id',
   name: 'mock organization',
-  members: [],
+  createdAt: '2023-12-27T13:17:06.309Z',
+  updatedAt: '2023-12-27T13:17:06.409Z',
 };
+
 const mockUnseenCount = { count: 1 };
 const mockNotification: IMessage = {
   _id: notificationId,
@@ -516,7 +521,7 @@ describe('NovuProvider', () => {
       });
     });
 
-    fireEvent.scroll(document.querySelectorAll('.infinite-scroll-component')[0], { target: { scrollY: 1000 } });
+    fireEvent.scroll(document.querySelectorAll('.nc-notifications-list')[0], { target: { scrollY: 1000 } });
 
     await waitFor(() => {
       expect(mockServiceInstance.getNotificationsList).toBeCalledTimes(2);

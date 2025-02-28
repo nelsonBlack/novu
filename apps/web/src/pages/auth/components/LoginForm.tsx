@@ -1,48 +1,126 @@
-import { useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import styled from '@emotion/styled';
 import { useForm } from 'react-hook-form';
-import * as Sentry from '@sentry/react';
-import { Divider, Button as MantineButton, Center } from '@mantine/core';
-
-import { useAuthContext } from '../../../components/providers/AuthProvider';
+import { captureException } from '@sentry/react';
+import { Center } from '@mantine/core';
+import { PasswordInput, Button, colors, Input, Text } from '@novu/design-system';
+import type { IResponseError } from '@novu/shared';
+import { useAuth, useRedirectURL, useVercelIntegration, useVercelParams } from '../../../hooks';
+import { useSegment } from '../../../components/providers/SegmentProvider';
 import { api } from '../../../api/api.client';
-import { PasswordInput, Button, colors, Input, Text } from '../../../design-system';
-import { GitHub, Google } from '../../../design-system/icons';
-import { IS_DOCKER_HOSTED } from '../../../config';
-import { useVercelParams } from '../../../hooks';
 import { useAcceptInvite } from './useAcceptInvite';
-import { buildGithubLink, buildGoogleLink, buildVercelGithubLink } from './gitHubUtils';
-import { ROUTES } from '../../../constants/routes.enum';
-import { When } from '../../../components/utils/When';
+import { ROUTES } from '../../../constants/routes';
+import { OAuth } from './OAuth';
+import { parseServerErrorMessage } from '../../../utils/errors';
 
 type LoginFormProps = {
   invitationToken?: string;
   email?: string;
 };
 
+export interface LocationState {
+  redirectTo?: {
+    pathname?: string;
+  };
+}
+
 export function LoginForm({ email, invitationToken }: LoginFormProps) {
+  const segment = useSegment();
+
+  const { setRedirectURL } = useRedirectURL();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setRedirectURL(), []);
+
+  const { login, currentUser, currentOrganization } = useAuth();
+  const { startVercelSetup } = useVercelIntegration();
+  const { isFromVercel, params: vercelParams } = useVercelParams();
+  const [params] = useSearchParams();
+  const tokenInQuery = params.get('token');
+  const source = params.get('source');
+  const sourceWidget = params.get('source_widget');
+  // TODO: Deprecate the legacy cameCased format in search param
+  const invitationTokenFromGithub = params.get('invitationToken') || params.get('invitation_token') || '';
+  const isRedirectedFromLoginPage = params.get('isLoginPage') || params.get('is_login_page') || '';
+
+  const { isLoading: isLoadingAcceptInvite, acceptInvite } = useAcceptInvite();
   const navigate = useNavigate();
-  const { setToken } = useAuthContext();
+  const location = useLocation();
+  const state = location.state as LocationState;
   const { isLoading, mutateAsync, isError, error } = useMutation<
     { token: string },
-    { error: string; message: string; statusCode: number },
+    IResponseError,
     {
       email: string;
       password: string;
     }
   >((data) => api.post('/v1/auth/login', data));
-  const { isLoading: isLoadingAcceptInvite, submitToken } = useAcceptInvite();
 
-  const { isFromVercel, code, next, configurationId } = useVercelParams();
-  const vercelQueryParams = `code=${code}&next=${next}&configurationId=${configurationId}`;
-  const signupLink = isFromVercel ? `/auth/signup?${vercelQueryParams}` : ROUTES.AUTH_SIGNUP;
-  const resetPasswordLink = isFromVercel ? `/auth/reset/request?${vercelQueryParams}` : ROUTES.AUTH_RESET_REQUEST;
-  const githubLink = isFromVercel
-    ? buildVercelGithubLink({ code, next, configurationId })
-    : buildGithubLink({ invitationToken });
-  const googleLink = buildGoogleLink({ invitationToken });
+  const handleLoginInUseEffect = async () => {
+    // if currentUser is true, it means user exists, then while accepting invitation, InvitationPage will handle accept this case
+    if (currentUser) {
+      handleVercelFlow();
+
+      return;
+    }
+
+    // if token from OAuth or CLI is not present
+    if (!tokenInQuery) {
+      return;
+    }
+
+    // handle github login after invitation
+    if (invitationTokenFromGithub) {
+      await login(tokenInQuery);
+      const updatedToken = await acceptInvite(invitationTokenFromGithub);
+
+      if (updatedToken) {
+        await login(updatedToken, isRedirectedFromLoginPage === 'true' ? ROUTES.WORKFLOWS : ROUTES.AUTH_APPLICATION);
+
+        return;
+      }
+    }
+
+    if (currentOrganization) {
+      navigate(ROUTES.WORKFLOWS);
+    } else {
+      await login(tokenInQuery, ROUTES.AUTH_APPLICATION);
+    }
+
+    await handleVercelFlow();
+
+    if (source === 'cli') {
+      segment.track('Dashboard Visit', {
+        widget: sourceWidget || 'unknown',
+        source: 'cli',
+      });
+      await login(tokenInQuery, ROUTES.GET_STARTED);
+
+      return;
+    }
+
+    await login(tokenInQuery, ROUTES.WORKFLOWS);
+  };
+
+  async function handleVercelFlow() {
+    if (isFromVercel) {
+      if (tokenInQuery) {
+        await login(tokenInQuery);
+      }
+
+      startVercelSetup();
+    }
+  }
+
+  useEffect(() => {
+    handleLoginInUseEffect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [login, currentUser]);
+
+  const signupLink = isFromVercel ? `${ROUTES.AUTH_SIGNUP}?${params.toString()}` : ROUTES.AUTH_SIGNUP;
+  const resetPasswordLink = isFromVercel
+    ? `${ROUTES.AUTH_RESET_REQUEST}?${params.toString()}`
+    : ROUTES.AUTH_RESET_REQUEST;
 
   const {
     register,
@@ -63,83 +141,52 @@ export function LoginForm({ email, invitationToken }: LoginFormProps) {
 
     try {
       const response = await mutateAsync(itemData);
-      const token = (response as any).token;
+      const { token } = response as any;
+      await login(token);
+
       if (isFromVercel) {
-        setToken(token);
+        startVercelSetup();
 
         return;
       }
 
       if (invitationToken) {
-        submitToken(token, invitationToken);
-
-        return;
+        const updatedToken = await acceptInvite(invitationToken);
+        if (updatedToken) {
+          await login(updatedToken);
+        }
       }
 
-      setToken(token);
-      navigate(ROUTES.WORKFLOWS);
+      navigate(state?.redirectTo?.pathname || ROUTES.WORKFLOWS);
     } catch (e: any) {
       if (e.statusCode !== 400) {
-        Sentry.captureException(e);
+        captureException(e);
       }
     }
   };
 
-  const serverErrorString = useMemo<string>(() => {
-    return Array.isArray(error?.message) ? error?.message[0] : error?.message;
-  }, [error]);
+  const emailClientError = errors.email?.message;
+  let emailServerError = parseServerErrorMessage(error);
 
-  const emailServerError = useMemo<string>(() => {
-    if (serverErrorString === 'email must be an email') return 'Please provide a valid email';
-
-    return '';
-  }, [serverErrorString]);
+  // TODO: Use a more human-friendly message in the IsEmail validator and remove this patch
+  if (emailServerError === 'email must be an email') {
+    emailServerError = 'Please provide a valid email address';
+  }
 
   return (
     <>
-      <When truthy={!IS_DOCKER_HOSTED}>
-        <>
-          <OAuth>
-            <GoogleButton
-              component="a"
-              href={githubLink}
-              my={30}
-              variant="white"
-              fullWidth
-              radius="md"
-              leftIcon={<GitHub />}
-              sx={{ color: colors.B40, fontSize: '16px', fontWeight: 700, height: '50px', marginRight: 10 }}
-              data-test-id="github-button"
-            >
-              Sign In with GitHub
-            </GoogleButton>
-            <GoogleButton
-              component="a"
-              href={googleLink}
-              my={30}
-              variant="white"
-              fullWidth
-              radius="md"
-              leftIcon={<Google />}
-              data-test-id="google-button"
-              sx={{ color: colors.B40, fontSize: '16px', fontWeight: 700, height: '50px', marginLeft: 10 }}
-            >
-              Sign In with Google
-            </GoogleButton>
-          </OAuth>
-          <Divider label={<Text color={colors.B40}>Or</Text>} color={colors.B30} labelPosition="center" my="md" />
-        </>
-      </When>
+      <OAuth invitationToken={invitationToken} isLoginPage={true} />
       <form noValidate onSubmit={handleSubmit(onLogin)}>
         <Input
-          error={errors.email?.message || emailServerError}
+          error={emailClientError || emailServerError}
           {...register('email', {
-            required: 'Please provide an email',
-            pattern: { value: /^\S+@\S+\.\S+$/, message: 'Please provide a valid email' },
+            required: 'Please provide an email address',
+            pattern: { value: /^\S+@\S+\.\S+$/, message: 'Please provide a valid email address' },
           })}
           required
           label="Email"
-          placeholder="Type your email..."
+          type="email"
+          placeholder="Type your email address..."
           disabled={!!invitationToken}
           data-test-id="email"
           mt={5}
@@ -181,32 +228,6 @@ export function LoginForm({ email, invitationToken }: LoginFormProps) {
           </Link>
         </Center>
       </form>
-      {isError && !emailServerError && (
-        <Text data-test-id="error-alert-banner" mt={20} size="lg" weight="bold" align="center" color={colors.error}>
-          {' '}
-          {error?.message}
-        </Text>
-      )}
     </>
   );
 }
-
-const OAuth = styled.div`
-  display: flex;
-  justify-content: space-between;
-`;
-
-const GoogleButton = styled(MantineButton)<{
-  component: 'a';
-  my: number;
-  href: string;
-  variant: 'white';
-  fullWidth: boolean;
-  radius: 'md';
-  leftIcon: any;
-  sx: any;
-}>`
-  :hover {
-    color: ${colors.B40};
-  }
-`;

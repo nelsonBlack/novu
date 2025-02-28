@@ -2,16 +2,13 @@ import { ChannelTypeEnum } from '@novu/shared';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Row } from 'react-table';
-import { ROUTES } from '../../constants/routes.enum';
+import { ROUTES } from '../../constants/routes';
 
-import { useIsMultiProviderConfigurationEnabled } from '../../hooks';
 import { IntegrationsList } from './IntegrationsList';
-import { IntegrationsStore } from './IntegrationsStorePage';
 import { ITableIntegration } from './types';
 
 export const IntegrationsListPage = () => {
   const navigate = useNavigate();
-  const isIntegrationsListPageEnabled = useIsMultiProviderConfigurationEnabled();
 
   const onRowClickCallback = useCallback(
     (item: Row<ITableIntegration>) => {
@@ -31,13 +28,11 @@ export const IntegrationsListPage = () => {
     [navigate]
   );
 
-  return isIntegrationsListPageEnabled ? (
+  return (
     <IntegrationsList
       onAddProviderClick={onAddProviderClickCallback}
       onRowClickCallback={onRowClickCallback}
       onChannelClick={onChannelClickCallback}
     />
-  ) : (
-    <IntegrationsStore />
   );
 };

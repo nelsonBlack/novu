@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
-import { Subscribers } from './subscribers/subscribers';
+import { getEnvVariable } from '@novu/shared';
 import { EventEmitter } from 'events';
+import { Subscribers } from './subscribers/subscribers';
 import { Changes } from './changes/changes';
 import { INovuConfiguration } from './novu.interface';
 import { Events } from './events/events';
@@ -13,9 +14,15 @@ import { Topics } from './topics/topics';
 import { Integrations } from './integrations/integrations';
 import { Messages } from './messages/messages';
 import { Tenants } from './tenants/tenants';
+import { ExecutionDetails } from './execution-details/execution-details';
+import { InboundParse } from './inbound-parse/inbound-parse';
+import { Organizations } from './organizations/organizations';
+import { WorkflowOverrides } from './workflow-override/workflow-override';
+
+import { makeRetryable } from './retry';
 
 export class Novu extends EventEmitter {
-  private readonly apiKey?: string;
+  public readonly secretKey?: string;
   private readonly http: AxiosInstance;
   readonly subscribers: Subscribers;
   readonly environments: Environments;
@@ -29,17 +36,53 @@ export class Novu extends EventEmitter {
   readonly integrations: Integrations;
   readonly messages: Messages;
   readonly tenants: Tenants;
+  readonly executionDetails: ExecutionDetails;
+  readonly inboundParse: InboundParse;
+  readonly organizations: Organizations;
+  readonly workflowOverrides: WorkflowOverrides;
 
-  constructor(apiKey: string, config?: INovuConfiguration) {
+  constructor(config?: INovuConfiguration);
+  constructor(secretKey: string, config?: INovuConfiguration);
+  constructor(...args: any) {
     super();
-    this.apiKey = apiKey;
 
-    this.http = axios.create({
+    let secretKey: string | undefined;
+    let config: INovuConfiguration | undefined;
+
+    if (arguments.length === 2) {
+      [secretKey, config] = args;
+    } else if (arguments.length === 1) {
+      if (typeof args[0] === 'object') {
+        const { secretKey: key, ...rest } = args[0];
+        secretKey = key;
+        config = rest;
+      } else {
+        [secretKey] = args;
+      }
+    } else {
+      secretKey =
+        getEnvVariable('NOVU_SECRET_KEY') || getEnvVariable('NOVU_API_KEY');
+    }
+
+    if (!secretKey) {
+      throw new Error(
+        'Missing secret key. Set the NOVU_SECRET_KEY environment variable or pass a secretKey to new Novu(secretKey) constructor.',
+      );
+    }
+
+    this.secretKey = secretKey;
+    const axiosInstance = axios.create({
       baseURL: this.buildBackendUrl(config),
       headers: {
-        Authorization: `ApiKey ${this.apiKey}`,
+        Authorization: `ApiKey ${this.secretKey}`,
       },
     });
+
+    if (config?.retryConfig) {
+      makeRetryable(axiosInstance, config);
+    }
+
+    this.http = axiosInstance;
 
     this.subscribers = new Subscribers(this.http);
     this.environments = new Environments(this.http);
@@ -53,6 +96,10 @@ export class Novu extends EventEmitter {
     this.integrations = new Integrations(this.http);
     this.messages = new Messages(this.http);
     this.tenants = new Tenants(this.http);
+    this.executionDetails = new ExecutionDetails(this.http);
+    this.inboundParse = new InboundParse(this.http);
+    this.organizations = new Organizations(this.http);
+    this.workflowOverrides = new WorkflowOverrides(this.http);
 
     this.trigger = this.events.trigger;
     this.bulkTrigger = this.events.bulkTrigger;
@@ -74,6 +121,6 @@ export class Novu extends EventEmitter {
 
     return config?.backendUrl.includes('novu.co/v')
       ? config?.backendUrl
-      : config?.backendUrl + `/${novuApiVersion}`;
+      : `${config?.backendUrl}/${novuApiVersion}`;
   }
 }

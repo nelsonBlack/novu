@@ -9,17 +9,15 @@ import {
 } from '@novu/application-generic';
 
 import { SendMessageType } from './send-message-type.usecase';
-import { CreateLog } from '../../../shared/logs';
 import { SendMessageCommand } from './send-message.command';
 
 @Injectable()
 export class SendMessageDelay extends SendMessageType {
   constructor(
     protected messageRepository: MessageRepository,
-    protected createLogUsecase: CreateLog,
     protected createExecutionDetails: CreateExecutionDetails
   ) {
-    super(messageRepository, createLogUsecase, createExecutionDetails);
+    super(messageRepository, createExecutionDetails);
   }
 
   @InstrumentUsecase()

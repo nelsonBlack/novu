@@ -1,9 +1,9 @@
 import styled from '@emotion/styled';
 import { Group, Stack, Title, UnstyledButton } from '@mantine/core';
 import { colors } from '@novu/notification-center';
-import * as capitalize from 'lodash.capitalize';
-import { shadows } from '../../../design-system';
+import capitalize from 'lodash.capitalize';
 import {
+  shadows,
   AngularGradient,
   ArrowLeft,
   Close,
@@ -11,7 +11,7 @@ import {
   JsGradient,
   ReactGradient,
   VueGradient,
-} from '../../../design-system/icons';
+} from '@novu/design-system';
 import { FrameworkEnum } from '../../quick-start/consts';
 
 const Icon = ({ framework }: { framework: string }) => {

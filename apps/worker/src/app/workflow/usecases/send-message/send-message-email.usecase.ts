@@ -1,13 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import inlineCss from 'inline-css';
+import { addBreadcrumb } from '@sentry/node';
+
 import {
   MessageRepository,
-  NotificationStepEntity,
   SubscriberRepository,
   EnvironmentRepository,
   IntegrationEntity,
   MessageEntity,
   LayoutRepository,
-  TenantRepository,
+  EnvironmentEntity,
+  OrganizationEntity,
+  UserEntity,
 } from '@novu/dal';
 import {
   ChannelTypeEnum,
@@ -16,22 +21,23 @@ import {
   ExecutionDetailsStatusEnum,
   IAttachmentOptions,
   IEmailOptions,
-  LogCodeEnum,
+  FeatureFlagsKeysEnum,
 } from '@novu/shared';
-import * as Sentry from '@sentry/node';
 import {
   InstrumentUsecase,
   DetailEnum,
-  CreateExecutionDetails,
-  CreateExecutionDetailsCommand,
   SelectIntegration,
   CompileEmailTemplate,
   CompileEmailTemplateCommand,
   MailFactory,
   GetNovuProviderCredentials,
+  SelectVariant,
+  CreateExecutionDetails,
+  CreateExecutionDetailsCommand,
+  FeatureFlagsService,
 } from '@novu/application-generic';
-import * as inlineCss from 'inline-css';
-import { CreateLog } from '../../../shared/logs';
+import { EmailOutput } from '@novu/framework/internal';
+
 import { SendMessageCommand } from './send-message.command';
 import { SendMessageBase } from './send-message.base';
 import { PlatformException } from '../../../shared/utils';
@@ -47,33 +53,28 @@ export class SendMessageEmail extends SendMessageBase {
     protected subscriberRepository: SubscriberRepository,
     protected messageRepository: MessageRepository,
     protected layoutRepository: LayoutRepository,
-    protected tenantRepository: TenantRepository,
-    protected createLogUsecase: CreateLog,
     protected createExecutionDetails: CreateExecutionDetails,
     private compileEmailTemplateUsecase: CompileEmailTemplate,
     protected selectIntegration: SelectIntegration,
-    protected getNovuProviderCredentials: GetNovuProviderCredentials
+    protected getNovuProviderCredentials: GetNovuProviderCredentials,
+    protected selectVariant: SelectVariant,
+    protected moduleRef: ModuleRef,
+    private featureFlagService: FeatureFlagsService
   ) {
     super(
       messageRepository,
-      createLogUsecase,
       createExecutionDetails,
       subscriberRepository,
-      tenantRepository,
       selectIntegration,
-      getNovuProviderCredentials
+      getNovuProviderCredentials,
+      selectVariant,
+      moduleRef
     );
   }
 
   @InstrumentUsecase()
   public async execute(command: SendMessageCommand) {
-    const subscriber = await this.getSubscriberBySubscriberId({
-      subscriberId: command.subscriberId,
-      _environmentId: command.environmentId,
-    });
-    if (!subscriber) throw new PlatformException(`Subscriber ${command.subscriberId} not found`);
-
-    let integration: IntegrationEntity | undefined = undefined;
+    let integration: IntegrationEntity | undefined;
 
     const overrideSelectedIntegration = command.overrides?.email?.integrationIdentifier;
     try {
@@ -103,13 +104,15 @@ export class SendMessageEmail extends SendMessageBase {
       return;
     }
 
-    const emailChannel: NotificationStepEntity = command.step;
-    if (!emailChannel) throw new PlatformException('Email channel step not found');
-    if (!emailChannel.template) throw new PlatformException('Email channel template not found');
+    const { step } = command;
 
-    const email = command.payload.email || subscriber.email;
+    if (!step) throw new PlatformException('Email channel step not found');
+    if (!step.template) throw new PlatformException('Email channel template not found');
 
-    Sentry.addBreadcrumb({
+    const { subscriber } = command.compileContext;
+    const email = command.overrides?.email?.toRecipient || subscriber.email;
+
+    addBreadcrumb({
       message: 'Sending Email',
     });
 
@@ -135,41 +138,38 @@ export class SendMessageEmail extends SendMessageBase {
       return;
     }
 
-    const [tenant, overrideLayoutId] = await Promise.all([
-      this.handleTenantExecution(command.job),
+    const [template, overrideLayoutId] = await Promise.all([
+      this.processVariants(command),
       this.getOverrideLayoutId(command),
       this.sendSelectedIntegrationExecution(command.job, integration),
     ]);
 
-    const overrides: Record<string, any> = Object.assign(
-      {},
-      command.overrides.email || {},
-      command.overrides[integration?.providerId] || {}
-    );
+    if (template) {
+      step.template = template;
+    }
+
+    const overrides: Record<string, any> = {
+      ...(command.overrides?.email || {}),
+      ...(command.overrides?.[integration?.providerId] || {}),
+    };
+    const bridgeOutputs = command.bridgeData?.outputs;
 
     let html;
-    let subject = '';
+    let subject = (bridgeOutputs as EmailOutput)?.subject || step?.template?.subject || '';
     let content;
+    let senderName;
 
     const payload = {
-      subject: emailChannel.template.subject || '',
-      preheader: emailChannel.template.preheader,
-      content: emailChannel.template.content,
-      layoutId: overrideLayoutId ?? emailChannel.template._layoutId,
-      contentType: emailChannel.template.contentType ? emailChannel.template.contentType : 'editor',
-      payload: {
-        ...command.payload,
-        step: {
-          digest: !!command.events?.length,
-          events: command.events,
-          total_count: command.events?.length,
-        },
-        ...(tenant && { tenant }),
-        subscriber,
-      },
+      senderName: step.template.senderName,
+      subject,
+      preheader: step.template.preheader,
+      content: step.template.content,
+      layoutId: overrideLayoutId ?? step.template._layoutId,
+      contentType: step.template.contentType ? step.template.contentType : 'editor',
+      payload: this.getCompilePayload(command.compileContext),
     };
 
-    const messagePayload = Object.assign({}, command.payload);
+    const messagePayload = { ...command.payload };
     delete messagePayload.attachments;
 
     const message: MessageEntity = await this.messageRepository.create({
@@ -178,7 +178,7 @@ export class SendMessageEmail extends SendMessageBase {
       _organizationId: command.organizationId,
       _subscriberId: command._subscriberId,
       _templateId: command._templateId,
-      _messageTemplateId: emailChannel.template._id,
+      _messageTemplateId: step.template._id,
       subject,
       channel: ChannelTypeEnum.EMAIL,
       transactionId: command.transactionId,
@@ -188,6 +188,7 @@ export class SendMessageEmail extends SendMessageBase {
       overrides,
       templateIdentifier: command.identifier,
       _jobId: command.jobId,
+      tags: command.tags,
     });
 
     let replyToAddress: string | undefined;
@@ -204,37 +205,62 @@ export class SendMessageEmail extends SendMessageBase {
     }
 
     try {
-      ({ html, content, subject } = await this.compileEmailTemplateUsecase.execute(
-        CompileEmailTemplateCommand.create({
-          environmentId: command.environmentId,
-          organizationId: command.organizationId,
-          userId: command.userId,
-          ...payload,
-        })
-      ));
+      const i18nInstance = await this.initiateTranslations(
+        command.environmentId,
+        command.organizationId,
+        subscriber.locale
+      );
 
-      if (this.storeContent()) {
-        await this.messageRepository.update(
-          {
-            _id: message._id,
-            _environmentId: command.environmentId,
-          },
-          {
-            $set: {
-              subject,
-              content,
+      if (!command.bridgeData) {
+        ({ html, content, subject, senderName } = await this.compileEmailTemplateUsecase.execute(
+          CompileEmailTemplateCommand.create({
+            environmentId: command.environmentId,
+            organizationId: command.organizationId,
+            userId: command.userId,
+            ...payload,
+          }),
+          i18nInstance
+        ));
+
+        if (this.storeContent()) {
+          await this.messageRepository.update(
+            {
+              _id: message._id,
+              _environmentId: command.environmentId,
             },
-          }
-        );
-      }
+            {
+              $set: {
+                subject,
+                content,
+              },
+            }
+          );
+        }
 
-      html = await inlineCss(html, {
-        // Used for style sheet links that starts with / so should not be needed in our case.
-        url: ' ',
-      });
-    } catch (e) {
-      Logger.error({ payload }, 'Compiling the email template or storing it or inlining it has failed', LOG_CONTEXT);
-      await this.sendErrorHandlebars(command.job, e.message);
+        // TODO: remove as part of https://linear.app/novu/issue/NV-4117/email-html-content-issue-in-mobile-devices
+        const shouldDisableInlineCss = await this.featureFlagService.getFlag({
+          key: FeatureFlagsKeysEnum.IS_EMAIL_INLINE_CSS_DISABLED,
+          defaultValue: false,
+          environment: { _id: command.environmentId } as EnvironmentEntity,
+          organization: { _id: command.organizationId } as OrganizationEntity,
+          user: { _id: command.userId } as UserEntity,
+        });
+
+        if (!shouldDisableInlineCss) {
+          // this is causing rendering issues in Gmail (especially when media queries are used), so we are disabling it
+          html = await inlineCss(html, {
+            // Used for style sheet links that starts with / so should not be needed in our case.
+            url: ' ',
+          });
+        }
+      }
+    } catch (error) {
+      Logger.error(
+        { payload, error },
+        'Compiling the email template or storing it or inlining it has failed',
+        LOG_CONTEXT
+      );
+      await this.sendErrorHandlebars(command.job, error.message);
 
       return;
     }
@@ -266,9 +292,10 @@ export class SendMessageEmail extends SendMessageBase {
       {
         to: email,
         subject,
-        html,
+        html: (bridgeOutputs as EmailOutput)?.body || html,
         from: integration?.credentials.from || 'no-reply@novu.co',
         attachments,
+        senderName,
         id: message._id,
         replyTo: replyToAddress,
         notificationDetails: {
@@ -289,13 +316,7 @@ export class SendMessageEmail extends SendMessageBase {
     }
 
     if (email && integration) {
-      await this.sendMessage(
-        integration,
-        mailData,
-        message,
-        command,
-        overrides?.senderName || emailChannel.template.senderName
-      );
+      await this.sendMessage(integration, mailData, message, command);
 
       return;
     }
@@ -307,7 +328,7 @@ export class SendMessageEmail extends SendMessageBase {
       await this.createExecutionDetails.execute(
         CreateExecutionDetailsCommand.create({
           ...CreateExecutionDetailsCommand.getDetailsFromJob(command.job),
-          messageId: messageId,
+          messageId,
           detail: DetailEnum.REPLY_CALLBACK_MISSING_REPLAY_CALLBACK_URL,
           source: ExecutionDetailsSourceEnum.INTERNAL,
           status: ExecutionDetailsStatusEnum.WARNING,
@@ -328,16 +349,17 @@ export class SendMessageEmail extends SendMessageBase {
       return getReplyToAddress(command.transactionId, environment._id, environment?.dns?.inboundParseDomain);
     } else {
       const detailEnum =
+        // eslint-disable-next-line no-nested-ternary
         !environment.dns?.mxRecordConfigured && !environment.dns?.inboundParseDomain
           ? DetailEnum.REPLY_CALLBACK_NOT_CONFIGURATION
           : !environment.dns?.mxRecordConfigured
-          ? DetailEnum.REPLY_CALLBACK_MISSING_MX_RECORD_CONFIGURATION
-          : DetailEnum.REPLY_CALLBACK_MISSING_MX_ROUTE_DOMAIN_CONFIGURATION;
+            ? DetailEnum.REPLY_CALLBACK_MISSING_MX_RECORD_CONFIGURATION
+            : DetailEnum.REPLY_CALLBACK_MISSING_MX_ROUTE_DOMAIN_CONFIGURATION;
 
       await this.createExecutionDetails.execute(
         CreateExecutionDetailsCommand.create({
           ...CreateExecutionDetailsCommand.getDetailsFromJob(command.job),
-          messageId: messageId,
+          messageId,
           detail: detailEnum,
           source: ExecutionDetailsSourceEnum.INTERNAL,
           status: ExecutionDetailsStatusEnum.WARNING,
@@ -358,14 +380,7 @@ export class SendMessageEmail extends SendMessageBase {
     if (!email) {
       const mailErrorMessage = `${errorMessage} email address`;
 
-      await this.sendErrorStatus(
-        message,
-        status,
-        errorId,
-        mailErrorMessage,
-        command,
-        LogCodeEnum.SUBSCRIBER_MISSING_EMAIL
-      );
+      await this.sendErrorStatus(message, status, errorId, mailErrorMessage, command);
 
       await this.createExecutionDetails.execute(
         CreateExecutionDetailsCommand.create({
@@ -385,14 +400,7 @@ export class SendMessageEmail extends SendMessageBase {
     if (!integration) {
       const integrationError = `${errorMessage} active email integration not found`;
 
-      await this.sendErrorStatus(
-        message,
-        status,
-        errorId,
-        integrationError,
-        command,
-        LogCodeEnum.MISSING_EMAIL_INTEGRATION
-      );
+      await this.sendErrorStatus(message, status, errorId, integrationError, command);
 
       await this.createExecutionDetails.execute(
         CreateExecutionDetailsCommand.create({
@@ -405,8 +413,6 @@ export class SendMessageEmail extends SendMessageBase {
           isRetry: false,
         })
       );
-
-      return;
     }
   }
 
@@ -414,14 +420,14 @@ export class SendMessageEmail extends SendMessageBase {
     integration: IntegrationEntity,
     mailData: IEmailOptions,
     message: MessageEntity,
-    command: SendMessageCommand,
-    senderName?: string
+    command: SendMessageCommand
   ) {
     const mailFactory = new MailFactory();
-    const mailHandler = mailFactory.getHandler(this.buildFactoryIntegration(integration, senderName), mailData.from);
+    const mailHandler = mailFactory.getHandler(this.buildFactoryIntegration(integration), mailData.from);
+    const bridgeProviderData = command.bridgeData?.providers?.[integration.providerId] || {};
 
     try {
-      const result = await mailHandler.send(mailData);
+      const result = await mailHandler.send({ ...mailData, bridgeProviderData });
 
       Logger.verbose({ command }, 'Email message has been sent', LOG_CONTEXT);
 
@@ -457,11 +463,19 @@ export class SendMessageEmail extends SendMessageBase {
         message,
         'error',
         'mail_unexpected_error',
-        'Error while sending email with provider',
+        error.message || error.name || 'Error while sending email with provider',
         command,
-        LogCodeEnum.MAIL_PROVIDER_DELIVERY_ERROR,
         error
       );
+
+      /*
+       * Axios Error, to provide better readability, otherwise stringify ignores response object
+       * TODO: Handle this at the handler level globally
+       */
+      if (error?.isAxiosError && error.response) {
+        // eslint-disable-next-line no-ex-assign
+        error = error.response;
+      }
 
       await this.createExecutionDetails.execute(
         CreateExecutionDetailsCommand.create({
@@ -472,11 +486,9 @@ export class SendMessageEmail extends SendMessageBase {
           status: ExecutionDetailsStatusEnum.FAILED,
           isTest: false,
           isRetry: false,
-          raw: JSON.stringify(error),
+          raw: JSON.stringify(error) === '{}' ? JSON.stringify({ message: error.message }) : JSON.stringify(error),
         })
       );
-
-      return;
     }
   }
 
@@ -516,7 +528,6 @@ export class SendMessageEmail extends SendMessageBase {
       ...integration,
       credentials: {
         ...integration.credentials,
-        senderName: senderName && senderName.length > 0 ? senderName : integration.credentials.senderName,
       },
       providerId: integration.providerId,
     };
@@ -536,10 +547,14 @@ export const createMailData = (options: IEmailOptions, overrides: Record<string,
     to,
     from: overrides?.from || options.from,
     text: overrides?.text,
+    html: overrides?.html || overrides?.text || options.html,
     cc: overrides?.cc || [],
     bcc: overrides?.bcc || [],
     ...ipPoolName,
+    senderName: overrides?.senderName || options.senderName,
+    subject: overrides?.subject || options.subject,
     customData: overrides?.customData || {},
+    headers: overrides?.headers || {},
   };
 };
 
